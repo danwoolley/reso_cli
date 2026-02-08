@@ -1,0 +1,3 @@
+#!/bin/bash
+# Wrapper to run the RESO CLI from any directory
+cd "$(dirname "$0")" && bundle exec bin/reso_cli "$@"

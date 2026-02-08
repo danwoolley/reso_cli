@@ -1,0 +1,26 @@
+# MLS RESO Web API Configuration
+# Copy this file to config/mls.yml and fill in your credentials.
+
+# Your MLS RESO Web API endpoint (OData service root)
+endpoint: https://api.your-mls.com/odata
+
+# Authentication (OAuth2 client credentials)
+authentication:
+  endpoint: https://auth.your-mls.com/oauth2/token
+  client_id: YOUR_CLIENT_ID
+  client_secret: YOUR_CLIENT_SECRET
+  # grant_type: client_credentials  # default
+  # scope: api                      # default
+
+# Alternative: static bearer token (uncomment and remove the above)
+# authentication:
+#   access_token: YOUR_BEARER_TOKEN
+#   token_type: Bearer
+
+# If your MLS requires localization selection for certain resources,
+# specify the default localization per resource:
+# localizations:
+#   Property: Residential
+
+# Set to true if your MLS requires the /replication endpoint for large queries
+# use_replication_endpoint: false
