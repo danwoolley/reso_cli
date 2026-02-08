@@ -34,7 +34,10 @@ Once that's done, you can test with `./reso_cli resources`
 
 ## Claude Code
 
-In future conversations, just ask me things like "show me 3-bedroom homes under $500k in [your city]" and the skill will kick in automatically.
+Run CC in the project folder, then ask things like:
+
+	- "show me 3-bedroom homes under $500k in [your city]"
+	- "what is the highest recorded sales price in [city] in the past 18 months?"
 
 
 danwoolley@gmail.com :goat:
