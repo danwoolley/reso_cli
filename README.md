@@ -1,6 +1,12 @@
+RESO Web API Client CLI + Claude Skills = Claude Code MLS Access!
+
+This has only been tested so far on the CRMLS RESO Server at https://h.api.crmls.org/Reso/OData and the Skills have been updated to match that MLS. I believe the Skill files will automatically adapt for new RESO servers, but that remains to be tested.
+
+
 ## Configure your credentials
 
 `cp config/mls.yml.example config/mls.yml`
+
 Then edit config/mls.yml with your MLS endpoint and OAuth credentials.
 
 
@@ -29,3 +35,5 @@ Once that's done, you can test with `./reso_cli resources`
 
 In future conversations, just ask me things like "show me 3-bedroom homes under $500k in [your city]" and the skill will kick in automatically.
 
+
+danwoolley@gmail.com :goat:
