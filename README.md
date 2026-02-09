@@ -30,7 +30,7 @@ Once that's done, you can test with:
   - `reso_cli count RESOURCE [filters]` -- count matching records
 
 
-## Skills: 
+## Skills
 
 In folder .claude/skills/mls:
 
@@ -49,6 +49,7 @@ show me 3-bedroom homes under $500k in [your city]
 ```text
 what is the highest recorded sales price in [city] in the past 18 months?
 ```
+
 
 
 danwoolley@gmail.com :goat:
