@@ -1,18 +1,24 @@
-# RESO Web API Client CLI + Claude Skills = Claude Code MLS Access!
+# RESO Web API Client CLI + Claude Skills = Claude Code MLS Access! :lobster:
 
-This has only been tested so far on the CRMLS RESO Server at https://h.api.crmls.org/Reso/OData and the Skills have been updated to match that MLS. I believe the Skill files will automatically adapt for new RESO servers, but that remains to be tested.
+This has been tested so far on the CRMLS RESO Server at https://h.api.crmls.org/Reso/OData and special notes have been added to the Skills for that MLS.
 
 
 ## Configure your credentials
 
-`cp config/mls.yml.example config/mls.yml`
+```bash
+cp config/mls.yml.example config/mls.yml
+```
 
 Then edit config/mls.yml with your MLS endpoint and OAuth credentials.
 
 
 ## Test	
 
-Once that's done, you can test with `./reso_cli resources`
+Once that's done, you can test with:
+
+```bash
+./reso_cli resources
+```
   
 
 ## Commands
@@ -26,7 +32,8 @@ Once that's done, you can test with `./reso_cli resources`
 
 ## Skills: 
 
-.claude/skills/mls/
+In folder .claude/skills/mls:
+
   - SKILL.md -- tells me when/how to use the CLI, query strategy, and auto-allows the Bash command
   - reference.md -- RESO Data Dictionary field names, OData filter syntax, and common query patterns (comps, active listings, new
   listings, etc.)
@@ -36,8 +43,12 @@ Once that's done, you can test with `./reso_cli resources`
 
 Run CC in the project folder, then ask things like:
 
-	- "show me 3-bedroom homes under $500k in [your city]"
-	- "what is the highest recorded sales price in [city] in the past 18 months?"
+```text
+show me 3-bedroom homes under $500k in [your city]
+```
+```text
+what is the highest recorded sales price in [city] in the past 18 months?
+```
 
 
 danwoolley@gmail.com :goat:
