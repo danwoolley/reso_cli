@@ -1,19 +1,22 @@
 # RESO Data Dictionary - Common Fields Reference
 
-## MLS-Specific Notes
+## CRMLS-Specific Notes (h.api.crmls.org)
 
-- **`$select` not supported** — Never use `--select`; this MLS returns 400. Full records are always returned.
-- **Enum fields** (typed `OData.Models.*`) — City, StandardStatus, PropertySubType, StreetSuffix, StreetDirPrefix, etc. MUST use structured `--eq`/`--ne` flags. They cause 400 errors in raw `--filter` OData expressions.
-- **`ListingKeyNumeric`** — Use this instead of `ListingKey` (which is null on this MLS).
-- **`StreetNumberNumeric`** — Use this instead of `StreetNumber` (which is null on this MLS).
-- **No `UnparsedAddress`** — Build addresses from `StreetNumberNumeric`, `StreetName`, `StreetSuffix`.
+The following quirks apply **only** when the configured endpoint is CRMLS (`https://h.api.crmls.org/Reso/OData`). Other MLS servers may not have these limitations.
+
+- **`$select` not supported** — Never use `--select`; CRMLS returns 400. Full records are always returned.
+- **Enum fields** (typed `OData.Models.*`) — City, StandardStatus, PropertySubType, StreetSuffix, StreetDirPrefix, etc. MUST use structured `--eq`/`--ne` flags. They cause 400 errors in raw `--filter` OData expressions on CRMLS.
+- **`ListingKeyNumeric`** — Use this instead of `ListingKey` (which is null on CRMLS).
+- **`StreetNumberNumeric`** — Use this instead of `StreetNumber` (which is null on CRMLS).
+- **No `UnparsedAddress`** — Build addresses from `StreetNumberNumeric`, `StreetName`, `StreetSuffix` on CRMLS.
 
 ## Property Resource - Key Fields
 
 ### Identification
-- `ListingKeyNumeric` - Unique identifier for the listing (use this, not ListingKey)
+- `ListingKeyNumeric` - Unique identifier for the listing (on CRMLS, use this instead of `ListingKey`)
+- `ListingKey` - Unique identifier (may be null on some MLSs like CRMLS; check your MLS)
 - `ListingId` - MLS number
-- `StandardStatus` - Standardized status (Active, Pending, Closed, etc.) **[ENUM — use --eq only]**
+- `StandardStatus` - Standardized status (Active, Pending, Closed, etc.) **[ENUM — on CRMLS, use --eq only]**
 
 ### Pricing
 - `ListPrice` - Current list price
@@ -22,11 +25,12 @@
 - `PreviousListPrice` - Previous list price
 
 ### Location
-- `City` - City name **[ENUM — use --eq only]**
+- `City` - City name **[ENUM — on CRMLS, use --eq only]**
 - `StateOrProvince` - State/province code (e.g., "CA")
 - `PostalCode` - ZIP/postal code
 - `CountyOrParish` - County name
-- `StreetNumberNumeric` - Street number (integer; use this, not StreetNumber)
+- `StreetNumberNumeric` - Street number as integer (on CRMLS, use this instead of `StreetNumber`)
+- `StreetNumber` - Street number as string (null on CRMLS; check your MLS)
 - `StreetName` - Street name (string)
 - `StreetSuffix` - Street suffix (Place, Ave, Dr, etc.) **[ENUM]**
 - `StreetDirPrefix` / `StreetDirSuffix` - Directional **[ENUM]**
@@ -103,7 +107,7 @@ City eq 'Austin' and (BedroomsTotal ge 3 or BathroomsTotalInteger ge 2)
 
 ## Common Query Patterns
 
-All examples use the CLI at `./reso_cli`. No `--select` (unsupported). Extract fields from JSON output.
+All examples use the CLI at `./reso_cli`. Extract fields from JSON output.
 
 ### Active listings in a city
 ```bash
@@ -130,7 +134,7 @@ reso_cli search Property --eq StandardStatus=Active \
 reso_cli search Property --eq "City=Newport Beach" --eq StandardStatus=Active \
   --filter "contains(PublicRemarks,'pool')" --top 10
 ```
-Note: --filter overrides structured filters for non-enum fields. Enum fields (City, StandardStatus) MUST stay in --eq flags — but they will be IGNORED when --filter is present. This is a known limitation; for keyword searches, rely on --filter alone for the non-enum conditions and accept that enum filters won't apply.
+Note: --filter overrides structured filters. When --filter is present, all --eq/--ge/etc. flags are ignored. For keyword searches, you must rely on --filter alone. On CRMLS, enum fields (City, StandardStatus) cannot be used in raw --filter expressions, so keyword searches cannot be combined with enum filtering in a single query.
 
 ### Count listings in an area
 ```bash
