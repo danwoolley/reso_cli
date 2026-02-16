@@ -47,12 +47,11 @@ You should see a list of resources available on your MLS.
 
 ## Skills
 
-In folder .claude/skills
-
-  /mls
+In folder .claude/skills:
+  - /mls
     - SKILL.md -- tells me when/how to use the CLI, query strategy, and auto-allows the Bash command
     - reference.md -- RESO Data Dictionary field names, OData filter syntax, and common query patterns (comps, active listings, new listings, etc.)
-  /mls-setup
+  - /mls-setup
     - SKILL.md -- the initial setup interview
 
 
