@@ -14,7 +14,9 @@ This has been tested so far on the CRMLS RESO Server at https://h.api.crmls.org/
 3. **Install dependencies** — `bundle install`
 
 
-## Have Claude configure your MLS RESO access and credentials
+## Setup
+
+### Have Claude configure your MLS RESO access and credentials
 
 Start Claude Code in the root folder of this project, then prompt it with:
 
@@ -25,7 +27,7 @@ Start Claude Code in the root folder of this project, then prompt it with:
 Answer the questions.
 
 
-## Manually configure your MLS RESO access and credentials
+### OR manually configure your MLS RESO access and credentials
 
 ```bash
 cp config/mls.yml.example config/mls.yml
@@ -64,7 +66,7 @@ In folder .claude/skills:
     - SKILL.md -- the initial setup interview
 
 
-## Claude Code
+## Claude Code usage
 
 Run Claude Code in the root project folder, then ask things like:
 
