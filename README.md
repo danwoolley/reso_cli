@@ -5,6 +5,15 @@ https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
 This has been tested so far on the CRMLS RESO Server at https://h.api.crmls.org/Reso/OData and special notes have been added to the Skills for that MLS.
 
 
+## Prerequisites
+
+1. **Ruby 3.1+** (tested with 3.4.1)
+   - Check with: `ruby --version`
+   - Install: [ruby-lang.org/en/documentation/installation](https://www.ruby-lang.org/en/documentation/installation/)
+2. **Bundler** — `gem install bundler`
+3. **Install dependencies** — `bundle install`
+
+
 ## Have Claude configure your MLS RESO access and credentials
 
 Start Claude Code in the root folder of this project, then prompt it with:
