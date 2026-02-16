@@ -5,7 +5,18 @@ https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
 This has been tested so far on the CRMLS RESO Server at https://h.api.crmls.org/Reso/OData and special notes have been added to the Skills for that MLS.
 
 
-## Configure your credentials
+## Have Claude configure your MLS RESO access and credentials
+
+Start Claude Code in the root folder of this project, then prompt it with:
+
+```text
+/mls-setup
+```
+
+Answer the questions.
+
+
+## Manually configure your MLS RESO access and credentials
 
 ```bash
 cp config/mls.yml.example config/mls.yml
@@ -14,16 +25,18 @@ cp config/mls.yml.example config/mls.yml
 Then edit config/mls.yml with your MLS endpoint and OAuth credentials.
 
 
-## Test	
+## Test	your MLS RESO connection
 
 Once that's done, you can test with:
 
 ```bash
 ./reso_cli resources
 ```
-  
 
-## Commands
+You should see a list of resources available on your MLS.
+
+
+## CLI commands
 
   - `reso_cli resources` -- discover what the MLS exposes
   - `reso_cli fields RESOURCE [--match PATTERN]` -- list/search field names
@@ -34,16 +47,18 @@ Once that's done, you can test with:
 
 ## Skills
 
-In folder .claude/skills/mls:
+In folder .claude/skills
 
-  - SKILL.md -- tells me when/how to use the CLI, query strategy, and auto-allows the Bash command
-  - reference.md -- RESO Data Dictionary field names, OData filter syntax, and common query patterns (comps, active listings, new
-  listings, etc.)
+  /mls
+    - SKILL.md -- tells me when/how to use the CLI, query strategy, and auto-allows the Bash command
+    - reference.md -- RESO Data Dictionary field names, OData filter syntax, and common query patterns (comps, active listings, new listings, etc.)
+  /mls-setup
+    - SKILL.md -- the initial setup interview
 
 
 ## Claude Code
 
-Run CC in the project folder, then ask things like:
+Run Claude Code in the root project folder, then ask things like:
 
 ```text
 show me 3-bedroom homes under $500k in [your city]
