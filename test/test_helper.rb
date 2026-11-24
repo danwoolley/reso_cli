@@ -11,6 +11,7 @@ FIXTURES = File.join(__dir__, "fixtures")
 # Never touch the user's real config, metadata cache, or a real in-repo config/mls.yml
 ENV["RESO_CLI_LEGACY_CONFIG"] = File.join(Dir.tmpdir, "reso_cli-test-no-legacy-#{Process.pid}.yml")
 ENV["RESO_CLI_CACHE_DIR"] = File.join(Dir.tmpdir, "reso_cli-test-cache-#{Process.pid}")
+ENV["RESO_CLI_NO_OPEN"] = "1" # never open a browser from tests
 
 require "reso_cli"
 
@@ -37,7 +38,8 @@ module CliHelper
       "RESO_CLI_CONFIG" => @config_path,
       "RESO_CLI_LEGACY_CONFIG" => File.join(@tmpdir, "legacy-mls.yml"),
       "RESO_CLI_PWD" => @tmpdir,
-      "RESO_CLI_CACHE_DIR" => File.join(@tmpdir, "cache")
+      "RESO_CLI_CACHE_DIR" => File.join(@tmpdir, "cache"),
+      "RESO_CLI_NO_OPEN" => "1"
     }.merge(env)
     out, err, status = Open3.capture3(env, RbConfig.ruby, File.join(APP_ROOT, "bin", "reso_cli"), *args.map(&:to_s))
     Result.new(out, err, status)
