@@ -1,6 +1,6 @@
 ---
 name: mls-setup
-description: Add a new MLS RESO Web API connection (name, endpoint, credentials) to reso_cli, from details the user pastes or from a Postman collection.
+description: Add a new MLS RESO Web API connection (name, endpoint, credentials) to reso_cli, from connection details the user pastes (or a Postman collection).
 allowed-tools: Bash(./reso_cli help), Bash(./reso_cli setup), Bash(./reso_cli mls), Bash(./reso_cli add *), Bash(./reso_cli postman *), Bash(./reso_cli test), Bash(./reso_cli use *), Bash(./reso_cli remove *)
 ---
 
@@ -14,7 +14,7 @@ The person may not be technical. Keep it friendly: ask one short question at a t
 
 - **Never read or edit the config file directly.** Use only the `./reso_cli` commands listed in this skill.
 - **Never repeat a secret, token or password back** in your replies, not even partly. Refer to them as "your client secret", "your token", and so on.
-- If a Postman collection is available, prefer it. `./reso_cli add --from-postman` copies the credentials straight from the file, so the secrets never appear in the conversation.
+- Pasting connection details into the chat is the normal path and is fine. If the user happens to have a Postman collection, `./reso_cli add --from-postman` copies the credentials straight from the file, so the secrets never appear in the conversation.
 
 ## Step 0: Make sure reso_cli can run
 
@@ -33,24 +33,17 @@ Then run `./reso_cli help` again to confirm it works before continuing.
 
 Run `./reso_cli mls` and note the existing names, so you can avoid duplicates.
 
-## Step 2: Ask how they received their credentials
+## Step 2: Get the connection details
 
-Ask: "Did your MLS or data vendor send you a **Postman collection** (a `.json` file), or do you have the **connection details** (an API URL plus a token, or a client ID and secret) to paste here?"
+Start with the common case. Ask:
 
-### Path A: Postman collection
+"Please paste the connection details your MLS or data vendor sent you: the **API URL**, plus either an **access token** or a **client ID and client secret**. Pasting the whole email is fine. (If they sent a **Postman collection** file instead, just tell me where it is.)"
 
-1. Ask for the file's location. Expand `~` and turn any relative path into an absolute one, because `./reso_cli` runs from the repo folder.
-2. Run `./reso_cli postman "<ABSOLUTE PATH>"`. It lists each usable auth setup in the collection, with its token URL, client ID, scope and the OData endpoints its requests use. It never shows secrets.
-3. If there's more than one usable auth setup, ask the user which one to use, using AskUserQuestion with one option per auth. Explain the differences in plain words when the names hint at them (e.g. "IDX & VOW" is public listing data; "BO" is the back-office feed).
-4. Ask for a name (see Step 3), then run:
-   ```bash
-   ./reso_cli add "<NAME>" --from-postman "<ABSOLUTE PATH>" --postman-auth "<AUTH NAME>"
-   ```
-   The endpoint is taken from the collection. If the collection listed no endpoint, ask for it and add `--endpoint "<URL>"`.
+If the user says they have a Postman collection, or gives a `.json` file path, follow **Path B**. Otherwise follow **Path A**.
 
-### Path B: Pasted or typed details
+### Path A: Pasted or typed details (default)
 
-Collect these, one at a time. If the user pastes a whole email or note, pick the values out of it yourself, and only ask about anything missing.
+If the user pastes a whole email or note, pick the values out of it yourself, and only ask about anything missing, one question at a time.
 
 1. **API endpoint URL**: the OData service root, e.g. `https://api.example.com/odata`. If they give a request URL like `https://api.example.com/odata/Property?$top=10`, use the part through `/odata`.
 2. **Name** (Step 3).
@@ -64,6 +57,17 @@ Then run one of these:
 ./reso_cli add "<NAME>" --endpoint "<URL>" --token "<TOKEN>"
 ./reso_cli add "<NAME>" --endpoint "<URL>" --token-url "<TOKEN URL>" --client-id "<ID>" --client-secret "<SECRET>" [--scope "<SCOPE>"]
 ```
+
+### Path B: Postman collection
+
+1. Ask for the file's location if they didn't give it. Expand `~` and turn any relative path into an absolute one.
+2. Run `./reso_cli postman "<ABSOLUTE PATH>"`. It lists each usable auth setup in the collection, with its token URL, client ID, scope and the OData endpoints its requests use. It never shows secrets.
+3. If there's more than one usable auth setup, ask the user which one to use, using AskUserQuestion with one option per auth. Explain the differences in plain words when the names hint at them (e.g. "IDX & VOW" is public listing data; "BO" is the back-office feed).
+4. Ask for a name (see Step 3), then run:
+   ```bash
+   ./reso_cli add "<NAME>" --from-postman "<ABSOLUTE PATH>" --postman-auth "<AUTH NAME>"
+   ```
+   The endpoint is taken from the collection. If the collection listed no endpoint, ask for it and add `--endpoint "<URL>"`.
 
 ## Step 3: Choose a name
 

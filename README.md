@@ -35,8 +35,8 @@ Start Claude Code in the `reso_cli` folder and type:
 
 The first time, Claude checks that Ruby and reso_cli's gems are installed, and installs whatever's missing, asking you first. Then it asks a few simple questions: what to call the MLS, its API address, and your credentials. You can:
 
-- **Point it at a Postman collection** (a `.json` file) if your MLS or data vendor sent you one. Claude reads the settings straight from the file, so your secrets never appear in the chat. This is the easiest and safest option.
-- **Paste the connection details**, for example straight from the email your MLS sent. Claude picks out the API URL, then either a bearer token or a client ID and secret (OAuth2).
+- **Paste the connection details**, for example straight from the email your MLS sent. Claude picks out the API URL, then either an access token or a client ID and secret (OAuth2). This is the usual way.
+- **Or point it at a Postman collection** (a `.json` file) if your MLS or data vendor sent one. Claude reads the settings straight from the file, so your secrets never appear in the chat.
 
 Claude then tests the connection and tells you whether it worked. Run `/mls-setup` again for each MLS you want to add. The newest one becomes active.
 
