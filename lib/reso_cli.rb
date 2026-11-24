@@ -3,6 +3,7 @@ require "json"
 require "yaml"
 require "fileutils"
 require "logger"
+require "digest"
 
 module ResoCli
   CONFIG_PATH = File.join(File.expand_path("../..", __FILE__), "config", "mls.yml")
@@ -43,6 +44,13 @@ module ResoCli
       YAML.load_file(CONFIG_PATH, symbolize_names: true)
     end
 
+    # One metadata cache file per endpoint, so switching MLS configs
+    # never reuses another server's metadata.
+    def metadata_cache_path
+      key = Digest::SHA256.hexdigest(config[:endpoint].to_s)[0, 12]
+      File.join(CACHE_DIR, "metadata-#{key}.xml")
+    end
+
     def client
       @client ||= begin
         FileUtils.mkdir_p(CACHE_DIR)
@@ -52,7 +60,7 @@ module ResoCli
         ResoTransport::Client.new(
           endpoint: config[:endpoint],
           authentication: config[:authentication],
-          md_file: File.join(CACHE_DIR, "metadata.xml"),
+          md_file: metadata_cache_path,
           use_replication_endpoint: config.fetch(:use_replication_endpoint, false),
           logger: null_logger
         )
