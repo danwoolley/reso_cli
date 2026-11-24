@@ -7,7 +7,11 @@
       "Read(~/.config/reso_cli/**)",
       "Edit(~/.config/reso_cli/**)",
       "Read(./config/mls.yml)",
-      "Edit(./config/mls.yml)"
+      "Edit(./config/mls.yml)",
+      "Read(~/.cache/mls/details/**)",
+      "Read(~/.cache/mls/photos/**)",
+      "Read(~/.cache/mls/comps/**)",
+      "Read(~/.cache/mls/compare/**)"
     ]
   }
 }

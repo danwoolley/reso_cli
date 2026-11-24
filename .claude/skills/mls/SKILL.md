@@ -83,6 +83,17 @@ Prefer `details` when the user wants to learn about a listing. Use `photos` when
 - **Don't publish these pages** to a hosted or shareable page. MLS listings and photos are licensed content, and the pages should stay on the user's machine. Don't download or describe the photos yourself unless the user asks.
 - **Photo links on some MLSs expire** (CRMLS/Trestle links last about an hour). If the user says the photos stopped loading, run the command again.
 
+## Protected listing content
+
+Agents' written remarks, listing photos and virtual tours are creative work owned by agents, brokers or photographers, and MLS data licenses limit where that content may go. Keep it out of the conversation, so it isn't sent to the AI provider:
+
+- **`search` and `get` leave it out of printed results.** Fields such as `PublicRemarks`, `PrivateRemarks`, `Media`, `MediaURL` and `VirtualTourURL*` are dropped, and the output names them under `protected_fields_omitted`. Facts such as price, dates, beds and size are unaffected.
+- **Pass `--include-protected` only when the user asks** in this conversation to see that content here, e.g. "what does the description say?". Otherwise, offer `details` so they can read it in their browser.
+- **Don't read protected fields from saved files.** Files saved with `--output` keep every field. Use `--select` so they contain only what's needed. When a script analyzes a saved file, print only facts (prices, dates, counts), never remarks or media or tour links.
+- **Don't open the pages that `photos`, `details`, `comps` and `compare` build** (under `~/.cache/mls/`) with Read, Grep or shell commands. They're for the user's browser. Report the path and counts the command printed. The project settings deny reading those folders.
+- **Don't look at, download or describe photos** unless the user asks.
+- **For comparison reports,** summarize differences by field name and count. Don't quote remarks from them.
+
 ## Comparing two feeds
 
 Use these when the user wants to check one MLS connection against another, e.g. an aggregator such as CDL against the native MLS feed. Both MLSs must already be set up (see `./reso_cli mls`). The active MLS doesn't change.
