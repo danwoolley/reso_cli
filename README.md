@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
 
-Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Open a listing's photos or a full portal-style details page, and save results to a spreadsheet (CSV) or JSON file.
+Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Open a listing's photos or a full portal-style details page, see comparable sales, compare feeds, and save results to a spreadsheet (CSV) or JSON file.
 
 
 ## Prerequisites
@@ -127,6 +127,7 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli refresh [--all]` -- re-download the active MLS's metadata (or clear every cached copy)
   - `reso_cli photos LISTING_ID` -- open a photo slideshow for a listing (`--output FILE.html`, `--no-open`)
   - `reso_cli details LISTING_ID` -- open a full listing details page: photos, key facts, map and every field (`--output FILE.html`, `--no-open`)
+  - `reso_cli comps LISTING_ID` -- comparable recent sales with a value range, map and table (`--months`, `--radius`, `--max`, `--output`, `--no-open`)
   - `reso_cli compare LISTING_ID --mls A --mls B` -- compare one listing between two MLS connections, field by field
   - `reso_cli compare-report --mls A --mls B (filters | --ids … | --ids-file FILE)` -- compare many listings and write a Markdown report (`--output`, `--max`, `--save-data`)
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
@@ -163,6 +164,7 @@ The tests run offline in a few seconds. They use a throwaway config file and fak
 - photo slideshow pages: photo order, skipping videos and documents, and escaping listing text
 - listing details pages: field grouping, labels, value formatting, hidden addresses, and escaping
 - price and status history: grouping change records into events, and the fallback built from the listing record
+- comparable sales: search criteria, distance, ranking, the value range and the page
 - feed comparison: field classification, the comparison page, and the batch report
 
 GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
@@ -224,6 +226,32 @@ From the shell:
 ```bash
 ./reso_cli details OC26210043                       # MLS number or ListingKey; opens your browser
 ./reso_cli details OC26210043 --output ~/Desktop/85-sedgewick.html --no-open
+```
+
+### Comparable sales (comps)
+
+Ask Claude what similar homes have sold for:
+
+```text
+show me comps for 85 Sedgewick
+```
+```text
+what are similar homes near that listing selling for?
+```
+
+Claude opens a page in your browser with:
+- **The listing** you asked about.
+- **A value range** based on what comparable homes sold for per square foot. This is a rough guide, not an appraisal.
+- **A map** with the listing (★) and each comp numbered.
+- **A table of the comps:** photo, address, sold date, sold and list price, beds/baths, sq ft, $/sq ft and distance.
+
+Comps are recent closed sales of the same type of home (e.g. single-family vs condo) nearby, with similar size and bedrooms. They're ranked by how similar they are. By default the search covers the last 6 months within 1 mile, and widens automatically if it finds fewer than 3.
+
+From the shell:
+
+```bash
+./reso_cli comps OC26210043
+./reso_cli comps OC26210043 --months 12 --radius 2 --max 15
 ```
 
 ### Comparing two feeds
