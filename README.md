@@ -162,6 +162,7 @@ The tests run offline in a few seconds. They use a throwaway config file and fak
 - health checks, token expiry, metadata refresh, and retrying throttled requests
 - photo slideshow pages: photo order, skipping videos and documents, and escaping listing text
 - listing details pages: field grouping, labels, value formatting, hidden addresses, and escaping
+- price and status history: grouping change records into events, and the fallback built from the listing record
 - feed comparison: field classification, the comparison page, and the batch report
 
 GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
@@ -213,7 +214,7 @@ open the listing page for 85 Sedgewick
 
 Claude opens a listing page in your browser, laid out like the big real estate portals:
 
-- **At the top:** a photo collage (click any photo, or "Show all photos", for a full-screen viewer), the price and status, beds/baths/sq ft and the address. Below those: key facts (type, year built, lot, price per sq ft, HOA, parking, cooling, days on market…), the description, a map and who the listing is with.
+- **At the top:** a photo collage (click any photo, or "Show all photos", for a full-screen viewer), the price and status, beds/baths/sq ft and the address. Below those: key facts (type, year built, lot, price per sq ft, HOA, parking, cooling, days on market…), the description, a **price & status history** (listed, price changes with the % change, status changes, sold), a map and who the listing is with. The history comes from the MLS's change-history records when the feed provides them. Otherwise it's pieced together from the listing's own dates and previous price and status, and the page notes that it may be incomplete.
 - **Below that, "All listing details":** every field in the MLS record, grouped into sections such as Interior, Exterior & lot, Community & HOA, Location, Schools, Financial & tax, Price & listing history and Agents & offices, with readable labels and formatted values. A search box filters the fields. You can also show the empty fields, or the original RESO field names (handy when comparing feeds or checking data quality).
 
 If the seller asked that the address not be shown online, the street address and map are left out. Listings not approved for internet display are flagged at the top. The map uses OpenStreetMap and needs an internet connection. Like the photo slideshow, the page is saved on your computer (under `~/.cache/mls/details/`) and isn't published anywhere.
