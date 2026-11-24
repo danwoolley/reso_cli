@@ -1,8 +1,8 @@
 ---
 name: mls-use
-description: List, switch or remove the user's configured MLS connections in reso_cli. Use for requests like "switch to CRMLS", "use my other MLS", "which MLS am I using?", "what MLSs do I have set up?", or "remove ACTRIS". To add an MLS or replace its credentials, use mls-setup instead.
-argument-hint: "[MLS name] | list | remove [MLS name]"
-allowed-tools: Bash(./reso_cli mls), Bash(./reso_cli use *), Bash(./reso_cli remove *), Bash(./reso_cli test)
+description: List, check, switch or remove the user's configured MLS connections in reso_cli. Use for requests like "switch to CRMLS", "use my other MLS", "which MLS am I using?", "what MLSs do I have set up?", "are all my MLSs working?", "when does my token expire?", or "remove ACTRIS". To add an MLS or replace its credentials, use mls-setup instead.
+argument-hint: "[MLS name] | list | check | remove [MLS name]"
+allowed-tools: Bash(./reso_cli mls), Bash(./reso_cli use *), Bash(./reso_cli remove *), Bash(./reso_cli test), Bash(./reso_cli test --all)
 ---
 
 # MLS Use Skill
@@ -15,13 +15,14 @@ Manage which MLS `reso_cli` queries: list the configured MLSs, switch the active
 ./reso_cli mls
 ```
 
-This prints each MLS's `name`, `endpoint`, `auth` type, and whether it is `active`. It never shows credentials. If the list is empty, tell the user to run `/mls-setup` and stop.
+This prints each MLS's `name`, `endpoint`, `auth` type, and whether it is `active`. For bearer tokens that carry an expiry date, it also shows `token_expires`, `token_expired` and `token_expires_in`. It never shows credentials. If the list is empty, tell the user to run `/mls-setup` and stop.
 
 ## Step 2: Work out what the user wants
 
 From the skill argument or their message:
 
-- **List / "which one am I using?"**: show the MLSs as a short table (name, endpoint, auth type) and say which one is active. Stop there, unless they also asked to switch.
+- **List / "which one am I using?"**: show the MLSs as a short table (name, endpoint, auth type, and token expiry when known) and say which one is active. Flag tokens that have expired or expire within a day. Stop there, unless they also asked to switch.
+- **Check / "are my MLSs working?"**: run `./reso_cli test --all`. It makes a live request to every MLS, prints one result each (`ok`, plus an `error` when one fails), and exits non-zero if any failed. Show a table with ✅/❌ and, for each failure, the fix in plain words: rejected credentials or an expired token means replace them with `/mls-setup`; "could not connect" means check the URL or network, or ask the MLS to approve the user's IP address.
 - **Remove** (e.g. "remove ACTRIS", `/mls-use remove ACTRIS`): go to **Remove an MLS**.
 - **Switch**, either with a name (e.g. `/mls-use CRMLS`, "switch to crmls") or with no argument at all: go to **Switch MLS**.
 

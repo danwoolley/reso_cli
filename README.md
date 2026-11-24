@@ -45,11 +45,12 @@ Claude then tests the connection and tells you whether it worked. Run `/mls-setu
 ```text
 /mls-use                  # pick from a list
 /mls-use CRMLS            # or choose by name
-/mls-use list             # see your MLSs and which one is active
+/mls-use list             # see your MLSs, which one is active, and when tokens expire
+/mls-use check            # check that every MLS is working
 /mls-use remove ACTRIS    # remove one (Claude asks you to confirm first)
 ```
 
-You don't need the slash commands: plain requests like "switch to CRMLS", "which MLS am I using?", "add another MLS" or "remove ACTRIS" work too.
+You don't need the slash commands: plain requests like "switch to CRMLS", "which MLS am I using?", "are all my MLSs working?", "add another MLS" or "remove ACTRIS" work too.
 
 ### Where your credentials are stored
 
@@ -61,7 +62,8 @@ A few things to know:
 
 - **Pasted credentials become part of your Claude conversation.** That's normally fine for MLS API keys. If you'd rather keep a secret out of the chat, use a Postman collection, or run `./reso_cli add` yourself in a terminal (see below).
 - Claude never prints saved secrets, and this repo's `.claude/settings.json` stops Claude from reading the config file.
-- **Bearer tokens often expire** (sometimes daily). If an MLS suddenly stops working, run `/mls-setup` again with a fresh token and choose to replace the existing entry. OAuth2 client credentials renew automatically.
+- **Bearer tokens often expire** (sometimes daily). When a token contains its expiry date, as most do, `/mls-use list` (or `./reso_cli mls`) shows when it expires. To replace an expired token, run `/mls-setup` again with a fresh one and choose to replace the existing entry. OAuth2 client credentials renew automatically.
+- **Check all your MLSs at once** by asking Claude "are all my MLSs working?" (or running `./reso_cli test --all`). You get one line per MLS, showing whether it works and, if not, why: credentials rejected, token expired, or can't connect.
 
 ### Upgrading from an older version
 
@@ -86,6 +88,7 @@ You can do everything from the shell:
 ./reso_cli add "My MLS" --from-postman ~/Downloads/MyMLS.postman_collection.json --postman-auth "AUTH NAME"
 
 ./reso_cli test           # check that the active MLS accepts your credentials
+./reso_cli test --all     # check every MLS
 ./reso_cli mls            # list your MLSs
 ./reso_cli use "My MLS"   # switch
 ./reso_cli remove "My MLS"
@@ -99,13 +102,12 @@ Every RESO server publishes a metadata document describing its resources (Proper
 - **Location:** `~/.cache/mls/`, one file per endpoint, named `metadata-<id>.xml`. The `<id>` is the first 12 characters of a SHA-256 hash of the endpoint URL, so switching MLSs never reuses another server's metadata.
 - **No credentials:** the files hold only the server's schema description, so they're safe to delete at any time.
 - **Shared by identical endpoints:** two MLS entries with the exact same endpoint URL (for example, two sets of credentials for one server) share a cache file. The URL text must match exactly, so `.../odata` and `.../OData` get separate files.
-- **Never expires:** if an MLS adds or changes fields or resources, clear the cache and the next command downloads a fresh copy:
+- **Never expires on its own:** if an MLS adds or changes fields or resources, ask Claude to "refresh the MLS metadata", or run:
 
   ```bash
-  rm ~/.cache/mls/metadata-*.xml
+  ./reso_cli refresh          # re-download the active MLS's metadata now
+  ./reso_cli refresh --all    # clear every MLS's cache; each is downloaded again when next used
   ```
-
-  That clears every MLS's cache. That's fine, since each one is downloaded again when you next use it.
 
 The cache never holds credentials, and `reso_cli resources` and `fields` can be answered from it without contacting the server. So to check that an MLS still accepts your credentials, use `reso_cli test`, which always makes a live, authenticated request.
 
@@ -121,7 +123,8 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli use NAME` -- switch the active MLS
   - `reso_cli add NAME [options]` -- add an MLS connection (`reso_cli add --help` for options)
   - `reso_cli remove NAME` -- remove an MLS connection
-  - `reso_cli test` -- make a live, authenticated request to the active MLS
+  - `reso_cli test [--all]` -- make a live, authenticated request to the active MLS (or every MLS, one result each)
+  - `reso_cli refresh [--all]` -- re-download the active MLS's metadata (or clear every cached copy)
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
   - `reso_cli setup` -- install reso_cli's Ruby gems (first-time setup)
 
@@ -137,7 +140,7 @@ In folder .claude/skills:
   - /mls-setup
     - SKILL.md -- friendly setup interview; adds a new named MLS from pasted details or a Postman collection, then tests it
   - /mls-use
-    - SKILL.md -- list your MLSs, switch the active one (by name or from a list), or remove one
+    - SKILL.md -- list your MLSs (with token expiry), check that they all work, switch the active one, or remove one
 
 
 ## Running tests
@@ -152,6 +155,7 @@ The tests run offline in a few seconds. They use a throwaway config file and fak
 - Postman import
 - how search flags become OData queries
 - saving results to JSON and CSV, and fetching every page with `--all`
+- health checks, token expiry, metadata refresh, and retrying throttled requests
 
 GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
 
@@ -183,6 +187,7 @@ save those results to comps.csv
 
 - **Spreadsheet or CSV** gives a `.csv` file that opens in Excel, Numbers or Google Sheets: one row per listing, one column per field. Otherwise you get a `.json` file.
 - **"All" means every match.** Claude follows every page of results, up to 10,000 records by default. For bigger exports, Claude tells you how many records match and asks before raising the limit.
+- **Busy servers are handled.** If the MLS throttles requests (HTTP 429) or is briefly unavailable (502/503/504), reso_cli waits and retries, up to 4 attempts, honoring the server's `Retry-After` header, so a long export doesn't fail halfway through.
 - **Files are saved in the folder you started Claude Code in**, unless you name another location. Claude tells you the full path and how many records were saved.
 - The file has exactly what the MLS returned. Claude has the CLI write it directly instead of copying results through the chat.
 

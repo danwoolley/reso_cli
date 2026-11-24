@@ -79,6 +79,9 @@ When the user asks about real estate listings:
 
 ## Important Notes
 
+- **Stale metadata:** if a field or resource the user expects is missing (e.g. `Property X not found`, or `fields` doesn't list it), the cached metadata may be out of date. Run `./reso_cli refresh` to re-download it, then retry.
+- **Busy servers:** reso_cli retries throttled (HTTP 429) or briefly unavailable (502/503/504) requests on its own, and prints "retrying..." on stderr. You don't need to retry yourself. If it still fails after its retries, tell the user the server is busy and suggest trying again later.
+- **Auth errors** (`Access denied`, 401/403): suggest `/mls-use` to check the MLSs (the token may have expired) and `/mls-setup` to replace the credentials.
 - Field names use RESO Data Dictionary CamelCase (e.g., `ListPrice`, `BedroomsTotal`, not `list_price`)
 - **`--filter` and structured flags are mutually exclusive**: When `--filter` is present, all `--eq`/`--ge`/etc. are ignored. Plan your queries accordingly.
 - JSON output goes to stdout; format it nicely when presenting to the user (table format preferred).

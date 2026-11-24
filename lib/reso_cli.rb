@@ -6,6 +6,7 @@ require "logger"
 require "digest"
 require "optparse"
 require "csv"
+require "time"
 require_relative "reso_cli/postman"
 
 module ResoCli
@@ -13,7 +14,12 @@ module ResoCli
   # Where MLS configs lived before they moved out of the repo; migrated automatically
   # (RESO_CLI_LEGACY_CONFIG overrides it; the test suite uses that to stay isolated)
   LEGACY_CONFIG_PATH = ENV["RESO_CLI_LEGACY_CONFIG"] || File.join(APP_ROOT, "config", "mls.yml")
-  CACHE_DIR          = File.expand_path("~/.cache/mls")
+  # Metadata cache (RESO_CLI_CACHE_DIR overrides it; the test suite uses that to stay isolated)
+  CACHE_DIR          = File.expand_path(ENV["RESO_CLI_CACHE_DIR"].to_s.empty? ? "~/.cache/mls" : ENV["RESO_CLI_CACHE_DIR"])
+  # Retry requests the server rejects as busy/throttled, waiting between attempts
+  RETRYABLE_STATUSES = [429, 502, 503, 504].freeze
+  MAX_ATTEMPTS       = 4
+  MAX_RETRY_WAIT     = 60
   # Safety limit for `search --all`, so a broad query can't pull millions of records by accident
   DEFAULT_MAX_RECORDS = 10_000
   CONFIG_HEADER      = <<~YAML
@@ -43,6 +49,7 @@ module ResoCli
       when "remove"    then cmd_remove(args)
       when "test"      then cmd_test(args)
       when "postman"   then cmd_postman(args)
+      when "refresh"   then cmd_refresh(args)
       when "help", nil, "-h", "--help" then cmd_help
       else
         abort "Unknown command: #{command}. Run 'reso_cli help' for usage."
@@ -154,25 +161,97 @@ module ResoCli
 
     # One metadata cache file per endpoint, so switching MLS configs
     # never reuses another server's metadata.
-    def metadata_cache_path
-      key = Digest::SHA256.hexdigest(config[:endpoint].to_s)[0, 12]
+    def metadata_cache_path(endpoint = config[:endpoint])
+      key = Digest::SHA256.hexdigest(endpoint.to_s)[0, 12]
       File.join(CACHE_DIR, "metadata-#{key}.xml")
     end
 
     def client
-      @client ||= begin
-        FileUtils.mkdir_p(CACHE_DIR)
+      @client ||= build_client(config)
+    end
 
-        null_logger = Logger.new(File::NULL)
+    # A client for any MLS entry (symbolized), not just the active one
+    def build_client(entry)
+      FileUtils.mkdir_p(CACHE_DIR)
+      ResoTransport::Client.new(
+        endpoint: entry[:endpoint],
+        authentication: entry[:authentication],
+        md_file: metadata_cache_path(entry[:endpoint]),
+        use_replication_endpoint: entry.fetch(:use_replication_endpoint, false),
+        logger: Logger.new(File::NULL)
+      )
+    end
 
-        ResoTransport::Client.new(
-          endpoint: config[:endpoint],
-          authentication: config[:authentication],
-          md_file: metadata_cache_path,
-          use_replication_endpoint: config.fetch(:use_replication_endpoint, false),
-          logger: null_logger
-        )
+    # -- Retries --
+
+    # Sleep function, swappable in tests
+    def sleeper
+      @sleeper ||= ->(seconds) { sleep(seconds) }
+    end
+    attr_writer :sleeper
+
+    # Run the block, retrying when the server says it's busy or throttling us
+    # (HTTP 429/502/503/504). Honors Retry-After; otherwise waits 1, 2, 4... seconds.
+    def with_retries(what = "request")
+      attempt = 1
+      begin
+        yield
+      rescue ResoTransport::RequestError => e
+        status = e.response.is_a?(Hash) ? e.response[:status] : nil
+        raise unless RETRYABLE_STATUSES.include?(status) && attempt < MAX_ATTEMPTS
+
+        wait = retry_wait(e.response, attempt)
+        warn "The MLS server is busy (HTTP #{status}); retrying #{what} in #{wait}s (attempt #{attempt + 1} of #{MAX_ATTEMPTS})..."
+        sleeper.call(wait)
+        attempt += 1
+        retry
       end
+    end
+
+    def retry_wait(response, attempt)
+      headers = (response[:response_headers] || {}).to_h { |k, v| [k.to_s.downcase, v] }
+      value = headers["retry-after"].to_s.strip
+      seconds = if value.match?(/\A\d+\z/)
+                  value.to_i
+                elsif !value.empty?
+                  (Time.httpdate(value) - Time.now).ceil rescue nil
+                end
+      (seconds && seconds >= 0 ? seconds : 2**(attempt - 1)).clamp(0, MAX_RETRY_WAIT)
+    end
+
+    # -- Token expiry --
+
+    # Expiry time of a JWT bearer token, or nil if the token isn't a JWT with an `exp` claim
+    def token_expiry(entry)
+      token = (entry["authentication"] || {})["access_token"].to_s
+      parts = token.split(".")
+      return nil unless parts.size == 3
+
+      payload = JSON.parse((parts[1].tr("-_", "+/") + "=" * (-parts[1].size % 4)).unpack1("m"))
+      exp = payload.is_a?(Hash) ? payload["exp"] : nil
+      exp.is_a?(Numeric) ? Time.at(exp).utc : nil
+    rescue ArgumentError, JSON::ParserError
+      nil
+    end
+
+    def expiry_info(entry)
+      expires = token_expiry(entry)
+      return {} unless expires
+
+      remaining = expires - Time.now
+      info = { token_expires: expires.iso8601, token_expired: remaining <= 0 }
+      info[:token_expires_in] = human_duration(remaining) if remaining > 0
+      info
+    end
+
+    def human_duration(seconds)
+      minutes = (seconds / 60).floor
+      return "#{minutes}m" if minutes < 60
+
+      hours = minutes / 60
+      return "#{hours}h #{minutes % 60}m" if hours < 48
+
+      "#{hours / 24}d #{hours % 24}h"
     end
 
     def resolve_resource(name)
@@ -208,7 +287,7 @@ module ResoCli
       warn "No MLSs configured yet. Run /mls-setup in Claude Code (or 'reso_cli add') to add one." if entries.empty?
       active = entries.empty? ? nil : active_mls_name_or_nil
       output = entries.map do |name, entry|
-        { name: name, endpoint: entry["endpoint"], auth: auth_type(entry), active: name == active }
+        { name: name, endpoint: entry["endpoint"], auth: auth_type(entry), active: name == active }.merge(expiry_info(entry))
       end
       puts JSON.pretty_generate(output)
     end
@@ -320,18 +399,79 @@ module ResoCli
     end
 
     # Check that the active MLS accepts our credentials (always makes a live, authenticated request)
-    def cmd_test(_args)
+    def cmd_test(args)
+      return cmd_test_all if args.include?("--all")
+
       name = active_mls_name
-      response = client.connection.get("") { |req| req.headers["Accept"] = "application/json" }
-      if [401, 403].include?(response.status)
-        abort "Error: #{name} rejected the credentials (HTTP #{response.status}). Check them and run /mls-setup again to replace this MLS."
-      end
+      result = check_connection(client, mls_entries[name])
+      abort "Error: #{name}: #{result[:error]}" unless result[:ok]
 
       resources = client.resources
       puts JSON.pretty_generate(
-        mls: name, endpoint: config[:endpoint], ok: true,
-        http_status: response.status, resources: resources.keys
+        { mls: name, endpoint: config[:endpoint], ok: true, http_status: result[:http_status], resources: resources.keys }
+          .merge(expiry_info(mls_entries[name]))
       )
+    end
+
+    # Check every configured MLS; one result per MLS. Exits non-zero if any failed.
+    def cmd_test_all
+      results = mls_entries.map do |name, entry|
+        warn "Checking #{name}..."
+        { name: name, endpoint: entry["endpoint"], active: name == active_mls_name_or_nil }
+          .merge(check_connection(build_client(symbolize(entry)), entry))
+          .merge(expiry_info(entry))
+      end
+      puts JSON.pretty_generate(results)
+      exit 1 unless results.all? { |r| r[:ok] }
+    end
+
+    # Make one live, authenticated request. Returns { ok:, http_status:, error: } and never raises.
+    def check_connection(mls_client, entry)
+      mls_client.connection.options.open_timeout = 15
+      mls_client.connection.options.timeout = 30
+      response = with_retries("the connection check") do
+        r = mls_client.connection.get("") { |req| req.headers["Accept"] = "application/json" }
+        raise ResoTransport::RequestError.new(nil, r, "service root") if RETRYABLE_STATUSES.include?(r.status)
+        r
+      end
+      return { ok: true, http_status: response.status } if response.success?
+
+      error = case response.status
+              when 401, 403 then "credentials rejected (HTTP #{response.status})"
+              when 404 then "endpoint not found (HTTP 404); check the URL"
+              else "unexpected response (HTTP #{response.status})"
+              end
+      { ok: false, http_status: response.status, error: with_expiry_hint(error, entry) }
+    rescue ResoTransport::AccessDenied => e
+      { ok: false, error: with_expiry_hint(e.message, entry) }
+    rescue ResoTransport::RequestError => e
+      { ok: false, error: e.message }
+    rescue Faraday::ConnectionFailed, Faraday::TimeoutError, Faraday::SSLError => e
+      { ok: false, error: "could not connect (#{e.message}); check the URL and network, or whether the MLS only allows approved IP addresses" }
+    end
+
+    def with_expiry_hint(message, entry)
+      expires = token_expiry(entry)
+      return message unless expires && expires <= Time.now
+
+      "#{message}. The bearer token expired at #{expires.iso8601}; replace it with /mls-setup"
+    end
+
+    # Re-download metadata for the active MLS, or delete every cached copy with --all
+    def cmd_refresh(args)
+      if args.include?("--all")
+        files = Dir.glob(File.join(CACHE_DIR, "metadata-*.xml"))
+        files.each { |f| File.delete(f) }
+        puts JSON.pretty_generate(deleted: files.size, cache_dir: CACHE_DIR,
+                                  note: "Each MLS's metadata will be downloaded again the next time it's used.")
+        return
+      end
+
+      name = active_mls_name
+      path = metadata_cache_path
+      File.delete(path) if File.exist?(path)
+      resources = with_retries("the metadata download") { client.resources }
+      puts JSON.pretty_generate(mls: name, endpoint: config[:endpoint], refreshed: true, resources: resources.keys)
     end
 
     # Show the auth settings in a Postman collection (never prints secrets)
@@ -395,7 +535,7 @@ module ResoCli
     # Run a query and return its records. With all: true, follow @odata.nextLink pages
     # until there are no more or `max` records have been fetched.
     def fetch_results(query, all: false, max: DEFAULT_MAX_RECORDS)
-      records = query.results
+      records = with_retries { query.results }
       next_link = query.next_link
       hit_max = false
 
@@ -406,7 +546,8 @@ module ResoCli
             break
           end
           warn "Fetched #{records.length} records so far..."
-          parsed = query.handle_response(query.resource.get_next_link_results(next_link))
+          link = next_link
+          parsed = with_retries("the next page") { query.handle_response(query.resource.get_next_link_results(link)) }
           records.concat(query.resource.parse(Array(parsed["value"])))
           next_link = parsed["@odata.nextLink"]
         end
@@ -479,8 +620,10 @@ module ResoCli
       url = "#{resource.url}('#{key}')"
       url += "?$select=#{select_fields}" if select_fields
 
-      response = client.connection.get(url) do |req|
-        req.headers["Accept"] = "application/json"
+      response = with_retries do
+        r = client.connection.get(url) { |req| req.headers["Accept"] = "application/json" }
+        raise ResoTransport::RequestError.new(nil, r, resource_name) if RETRYABLE_STATUSES.include?(r.status)
+        r
       end
 
       unless response.success?
@@ -506,7 +649,7 @@ module ResoCli
       resource = resolve_resource(resource_name)
       query = build_query(resource, options)
 
-      total = query.count
+      total = with_retries { query.count }
       puts JSON.generate({ count: total })
     end
 
@@ -526,7 +669,8 @@ module ResoCli
           use NAME                      Switch the active MLS
           add NAME [options]            Add an MLS connection (run 'reso_cli add --help')
           remove NAME                   Remove an MLS connection
-          test                          Check that the active MLS accepts your credentials
+          test [--all]                  Check that the active MLS (or every MLS) accepts your credentials
+          refresh [--all]               Re-download the active MLS's metadata (--all: clear every cache)
           postman FILE                  Show the MLS auth settings in a Postman collection
           setup                         Install reso_cli's Ruby gems (first-time setup)
           help                          Show this help
