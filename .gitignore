@@ -1,3 +1,5 @@
+# Old in-repo MLS config location (now ~/.config/reso_cli/mls.yml); never commit credentials
+config/mls.yml
 config/mls.yml.*
 !config/mls.yml.example
 .claude/settings.local.json

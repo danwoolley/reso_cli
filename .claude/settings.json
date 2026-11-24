@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/.config/reso_cli/**)",
+      "Edit(~/.config/reso_cli/**)",
+      "Read(./config/mls.yml)",
+      "Edit(./config/mls.yml)"
+    ]
+  }
+}

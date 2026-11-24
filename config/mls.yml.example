@@ -1,11 +1,8 @@
-# MLS RESO Web API Configuration
+# Example reso_cli MLS config. Your real config lives OUTSIDE this repo:
+#   ~/.config/reso_cli/mls.yml   (or the path in $RESO_CLI_CONFIG)
 #
-# config/mls.yml is checked into git as an EMPTY file. Add MLSs to it locally
-# with /mls-setup (or by hand, following this example) and switch between them
-# with /mls-use or `./reso_cli use NAME`.
-#
-# Keep your credentials out of git by running this once per clone:
-#   git update-index --skip-worktree config/mls.yml
+# You normally never edit it by hand: /mls-setup in Claude Code, or
+# `./reso_cli add`, creates and updates it. This file only documents the format.
 
 # The MLS that reso_cli talks to (must match a name under `mls:`)
 active: Example OAuth MLS
@@ -18,7 +15,7 @@ mls:
       endpoint: https://auth.your-mls.com/oauth2/token
       client_id: YOUR_CLIENT_ID
       client_secret: YOUR_CLIENT_SECRET
-      scope: ''
+      scope: ''                                     # most servers want none
     # Optional: default localization per resource, if your MLS requires one
     # localizations:
     #   Property: Residential
