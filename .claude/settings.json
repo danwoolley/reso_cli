@@ -1,5 +1,8 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(./reso_cli *)"
+    ],
     "deny": [
       "Read(~/.config/reso_cli/**)",
       "Edit(~/.config/reso_cli/**)",
