@@ -24,16 +24,28 @@ Start Claude Code in the root folder of this project, then prompt it with:
 /mls-setup
 ```
 
-Answer the questions.
+Answer the questions. Each run adds one more MLS (a name, endpoint and credentials) to `config/mls.yml` and makes it the active one. Run it again for every MLS RESO server you want to test.
 
+### Switch between MLSs
+
+```text
+/mls-use            # pick from a list
+/mls-use CRMLS      # or choose by name
+```
+
+Or from the shell: `./reso_cli mls` lists configured MLSs and `./reso_cli use NAME` switches the active one.
 
 ### OR manually configure your MLS RESO access and credentials
 
-```bash
-cp config/mls.yml.example config/mls.yml
-```
+Edit `config/mls.yml` following the format in `config/mls.yml.example`: one entry per MLS under `mls:`, with `active:` naming the one to use.
 
-Then edit config/mls.yml with your MLS endpoint and OAuth credentials.
+### Keep your credentials out of git
+
+`config/mls.yml` is checked into git as an empty file. After cloning, run this once so your local credentials never show up in `git status` or get committed (`/mls-setup` does this for you):
+
+```bash
+git update-index --skip-worktree config/mls.yml
+```
 
 
 ## Test	your MLS RESO connection
@@ -54,6 +66,8 @@ You should see a list of resources available on your MLS.
   - `reso_cli search RESOURCE [filters]` -- query with structured or raw OData filters
   - `reso_cli get RESOURCE KEY` -- fetch a single record
   - `reso_cli count RESOURCE [filters]` -- count matching records
+  - `reso_cli mls` -- list configured MLSs (credentials are never printed)
+  - `reso_cli use NAME` -- switch the active MLS
 
 
 ## Skills
@@ -63,7 +77,9 @@ In folder .claude/skills:
     - SKILL.md -- tells me when/how to use the CLI, query strategy, and auto-allows the Bash command
     - reference.md -- RESO Data Dictionary field names, OData filter syntax, and common query patterns (comps, active listings, new listings, etc.)
   - /mls-setup
-    - SKILL.md -- the initial setup interview
+    - SKILL.md -- the setup interview; adds a new named MLS to config/mls.yml each time it runs
+  - /mls-use
+    - SKILL.md -- switch the active MLS by name or by picking from a list
 
 
 ## Claude Code usage

@@ -1,3 +1,4 @@
-config/mls.yml
+config/mls.yml.*
+!config/mls.yml.example
 .claude/settings.local.json
 .ruby-lsp/

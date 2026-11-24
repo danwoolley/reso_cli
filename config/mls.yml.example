@@ -1,26 +1,33 @@
 # MLS RESO Web API Configuration
-# Copy this file to config/mls.yml and fill in your credentials.
+#
+# config/mls.yml is checked into git as an EMPTY file. Add MLSs to it locally
+# with /mls-setup (or by hand, following this example) and switch between them
+# with /mls-use or `./reso_cli use NAME`.
+#
+# Keep your credentials out of git by running this once per clone:
+#   git update-index --skip-worktree config/mls.yml
 
-# Your MLS RESO Web API endpoint (OData service root)
-endpoint: https://api.your-mls.com/odata
+# The MLS that reso_cli talks to (must match a name under `mls:`)
+active: Example OAuth MLS
 
-# Authentication (OAuth2 client credentials)
-authentication:
-  endpoint: https://auth.your-mls.com/oauth2/token
-  client_id: YOUR_CLIENT_ID
-  client_secret: YOUR_CLIENT_SECRET
-  # grant_type: client_credentials  # default
-  # scope: api                      # default
+mls:
+  # OAuth2 client credentials
+  Example OAuth MLS:
+    endpoint: https://api.your-mls.com/odata        # OData service root
+    authentication:
+      endpoint: https://auth.your-mls.com/oauth2/token
+      client_id: YOUR_CLIENT_ID
+      client_secret: YOUR_CLIENT_SECRET
+      scope: ''
+    # Optional: default localization per resource, if your MLS requires one
+    # localizations:
+    #   Property: Residential
+    # Optional: use the /replication endpoint for large queries
+    # use_replication_endpoint: false
 
-# Alternative: static bearer token (uncomment and remove the above)
-# authentication:
-#   access_token: YOUR_BEARER_TOKEN
-#   token_type: Bearer
-
-# If your MLS requires localization selection for certain resources,
-# specify the default localization per resource:
-# localizations:
-#   Property: Residential
-
-# Set to true if your MLS requires the /replication endpoint for large queries
-# use_replication_endpoint: false
+  # Static bearer token
+  Example Bearer MLS:
+    endpoint: https://api.other-mls.com/odata
+    authentication:
+      access_token: YOUR_BEARER_TOKEN
+      token_type: Bearer

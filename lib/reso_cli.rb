@@ -19,6 +19,8 @@ module ResoCli
       when "search"    then cmd_search(args)
       when "get"       then cmd_get(args)
       when "count"     then cmd_count(args)
+      when "mls"       then cmd_mls(args)
+      when "use"       then cmd_use(args)
       when "help", nil, "-h", "--help" then cmd_help
       else
         abort "Unknown command: #{command}. Run 'reso_cli help' for usage."
@@ -33,15 +35,51 @@ module ResoCli
 
     private
 
+    # Settings for the active MLS (endpoint, authentication, localizations, ...)
     def config
-      @config ||= load_config
+      @config ||= begin
+        name = active_mls_name
+        entry = mls_entries[name]
+        abort "Active MLS '#{name}' is not defined in #{CONFIG_PATH}. Run 'reso_cli mls' to list MLSs." unless entry
+        symbolize(entry)
+      end
     end
 
-    def load_config
-      unless File.exist?(CONFIG_PATH)
-        abort "Config not found at #{CONFIG_PATH}.\nCreate it from the example in config/mls.yml.example"
+    # Raw contents of config/mls.yml. The file is checked in empty, so treat
+    # empty/blank as "no MLSs configured".
+    def config_file
+      @config_file ||= begin
+        abort "Config not found at #{CONFIG_PATH}. Run /mls-setup in Claude Code to add an MLS." unless File.exist?(CONFIG_PATH)
+        data = YAML.load_file(CONFIG_PATH) || {}
+        abort "Invalid config in #{CONFIG_PATH}: expected a mapping" unless data.is_a?(Hash)
+        data
       end
-      YAML.load_file(CONFIG_PATH, symbolize_names: true)
+    end
+
+    def mls_entries
+      entries = config_file["mls"] || {}
+      abort "No MLSs configured in #{CONFIG_PATH}. Run /mls-setup in Claude Code to add one." if entries.empty?
+      entries
+    end
+
+    def active_mls_name
+      name = config_file["active"]
+      return name if name
+      return mls_entries.keys.first if mls_entries.size == 1
+      abort "No active MLS set. Choose one with 'reso_cli use NAME' (see 'reso_cli mls')."
+    end
+
+    def find_mls_name(query)
+      names = mls_entries.keys
+      names.find { |n| n == query } || names.find { |n| n.casecmp?(query) }
+    end
+
+    def symbolize(obj)
+      case obj
+      when Hash  then obj.to_h { |k, v| [k.to_sym, symbolize(v)] }
+      when Array then obj.map { |v| symbolize(v) }
+      else obj
+      end
     end
 
     # One metadata cache file per endpoint, so switching MLS configs
@@ -89,6 +127,41 @@ module ResoCli
     end
 
     # -- Commands --
+
+    # List configured MLSs (never prints credentials)
+    def cmd_mls(_args)
+      active = config_file["active"] || (mls_entries.size == 1 ? mls_entries.keys.first : nil)
+      output = mls_entries.map do |name, entry|
+        auth = entry["authentication"] || {}
+        {
+          name: name,
+          endpoint: entry["endpoint"],
+          auth: auth.key?("access_token") ? "bearer" : "oauth2",
+          active: name == active
+        }
+      end
+      puts JSON.pretty_generate(output)
+    end
+
+    # Set the active MLS by name (case-insensitive)
+    def cmd_use(args)
+      query = args.join(" ").strip
+      abort "Usage: reso_cli use NAME (see 'reso_cli mls')" if query.empty?
+
+      name = find_mls_name(query)
+      abort "No MLS named '#{query}'. Available: #{mls_entries.keys.join(', ')}" unless name
+
+      # Rewrite only the top-level `active:` line so comments/formatting survive.
+      text = File.read(CONFIG_PATH)
+      line = "active: #{name.to_json}"
+      text = if text.match?(/^active:.*$/)
+               text.sub(/^active:.*$/, line)
+             else
+               "#{line}\n#{text}"
+             end
+      File.write(CONFIG_PATH, text)
+      puts JSON.pretty_generate(active: name, endpoint: mls_entries[name]["endpoint"])
+    end
 
     def cmd_resources(_args)
       resources = client.resources
@@ -187,6 +260,8 @@ module ResoCli
           search RESOURCE [options]     Search records
           get RESOURCE KEY              Get a single record by key
           count RESOURCE [options]      Count matching records
+          mls                           List configured MLSs (marks the active one)
+          use NAME                      Switch the active MLS
           help                          Show this help
 
         Search/Count Options:
@@ -209,7 +284,7 @@ module ResoCli
         Get Options:
           --select FIELD1,FIELD2        Fields to return
 
-        Config: config/mls.yml
+        Config: config/mls.yml (one entry per MLS under `mls:`; `active:` picks one)
 
         Examples:
           reso_cli resources
