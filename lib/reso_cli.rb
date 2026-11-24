@@ -8,6 +8,7 @@ require "optparse"
 require "csv"
 require "time"
 require_relative "reso_cli/postman"
+require_relative "reso_cli/slideshow"
 
 module ResoCli
   APP_ROOT           = File.expand_path("../..", __FILE__)
@@ -50,6 +51,7 @@ module ResoCli
       when "test"      then cmd_test(args)
       when "postman"   then cmd_postman(args)
       when "refresh"   then cmd_refresh(args)
+      when "photos"    then cmd_photos(args)
       when "help", nil, "-h", "--help" then cmd_help
       else
         abort "Unknown command: #{command}. Run 'reso_cli help' for usage."
@@ -474,6 +476,75 @@ module ResoCli
       puts JSON.pretty_generate(mls: name, endpoint: config[:endpoint], refreshed: true, resources: resources.keys)
     end
 
+    # Build a photo slideshow page for one listing and open it in the browser
+    def cmd_photos(args)
+      id = nil
+      output = nil
+      open_page = ENV["RESO_CLI_NO_OPEN"].to_s.empty?
+      until args.empty?
+        arg = args.shift
+        case arg
+        when "--no-open" then open_page = false
+        when "--output"
+          output = args.shift
+          abort "Missing value for --output" unless output
+        else
+          abort "Unexpected argument: #{arg}" if id
+          id = arg
+        end
+      end
+      abort "Usage: reso_cli photos LISTING_ID [--output FILE.html] [--no-open]  (MLS number or ListingKey)" unless id
+
+      listing = find_listing_with_media(id)
+      abort "No listing found with MLS number or ListingKey '#{id}' on #{active_mls_name}." unless listing
+
+      photos = Slideshow.photos(listing["Media"])
+      path = ResoCli.user_path(output || File.join(CACHE_DIR, "photos", "photos-#{(listing['ListingId'] || id).to_s.gsub(/[^\w.-]/, '_')}.html"))
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, Slideshow.html(listing, photos, mls_name: active_mls_name))
+
+      opened = open_page && open_in_browser(path)
+      result = { listing_id: listing["ListingId"], address: Slideshow.address(listing), photos: photos.size, saved: path, opened: opened }
+      result[:note] = "Photo links from this MLS may expire; run this command again if photos stop loading." if photos.any?
+      result[:note] = "This listing has no photos." if photos.empty?
+      puts JSON.pretty_generate(result)
+    end
+
+    # Look a listing up by MLS number (ListingId), then by ListingKey, with its Media expanded
+    def find_listing_with_media(id)
+      resource = resolve_resource("Property")
+      %w[ListingId ListingKey].each do |field|
+        next unless resource.property(field)
+
+        found = with_retries { resource.query.eq(field.to_sym => id).limit(1).expand("Media").results.first }
+        next unless found
+
+        found["Media"] ||= fetch_media(found) # some servers don't support $expand=Media
+        return found
+      end
+      nil
+    end
+
+    def fetch_media(listing)
+      media = client.resources["Media"]
+      key = listing["ListingKey"]
+      return [] unless media && key && media.property("ResourceRecordKey")
+
+      with_retries { media.query.eq(ResourceRecordKey: key).limit(200).results }
+    rescue ResoTransport::RequestError
+      []
+    end
+
+    def open_in_browser(path)
+      opener = if RUBY_PLATFORM.include?("darwin") then "open"
+               elsif File.exist?("/proc/version") && File.read("/proc/version").match?(/microsoft/i) then "wslview"
+               else "xdg-open"
+               end
+      system(opener, path, out: File::NULL, err: File::NULL) ? true : false
+    rescue SystemCallError
+      false
+    end
+
     # Show the auth settings in a Postman collection (never prints secrets)
     def cmd_postman(args)
       path = args.first
@@ -671,6 +742,8 @@ module ResoCli
           remove NAME                   Remove an MLS connection
           test [--all]                  Check that the active MLS (or every MLS) accepts your credentials
           refresh [--all]               Re-download the active MLS's metadata (--all: clear every cache)
+          photos LISTING_ID             Open a photo slideshow for a listing (MLS number or ListingKey)
+                                        [--output FILE.html] [--no-open]
           postman FILE                  Show the MLS auth settings in a Postman collection
           setup                         Install reso_cli's Ruby gems (first-time setup)
           help                          Show this help

@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
 
-Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Results can be saved to a spreadsheet (CSV) or JSON file.
+Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. View a listing's photos in a slideshow, and save results to a spreadsheet (CSV) or JSON file.
 
 
 ## Prerequisites
@@ -125,6 +125,7 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli remove NAME` -- remove an MLS connection
   - `reso_cli test [--all]` -- make a live, authenticated request to the active MLS (or every MLS, one result each)
   - `reso_cli refresh [--all]` -- re-download the active MLS's metadata (or clear every cached copy)
+  - `reso_cli photos LISTING_ID` -- open a photo slideshow for a listing (`--output FILE.html`, `--no-open`)
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
   - `reso_cli setup` -- install reso_cli's Ruby gems (first-time setup)
 
@@ -156,6 +157,7 @@ The tests run offline in a few seconds. They use a throwaway config file and fak
 - how search flags become OData queries
 - saving results to JSON and CSV, and fetching every page with `--all`
 - health checks, token expiry, metadata refresh, and retrying throttled requests
+- photo slideshow pages: photo order, skipping videos and documents, and escaping listing text
 
 GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
 
@@ -169,6 +171,28 @@ show me 3-bedroom homes under $500k in [your city]
 ```
 ```text
 what is the highest recorded sales price in [city] in the past 18 months?
+```
+
+### Viewing a listing's photos
+
+Ask Claude for a listing's photos in plain words:
+
+```text
+show me the photos of that listing
+```
+```text
+show me pictures of 85 Sedgewick in Irvine
+```
+
+Claude opens a slideshow of every photo, in order, in your browser. The page has the address, price, beds/baths and MLS number at the top, previous/next arrows (the arrow keys work too) and a strip of thumbnails. The page is saved on your computer (under `~/.cache/mls/photos/`) and isn't published anywhere.
+
+Some MLSs issue photo links that expire after about an hour (CRMLS through Trestle does). If the photos stop loading, ask again and Claude rebuilds the page with fresh links.
+
+From the shell:
+
+```bash
+./reso_cli photos OC26210043                        # MLS number or ListingKey; opens your browser
+./reso_cli photos OC26210043 --output ~/Desktop/85-sedgewick.html --no-open
 ```
 
 ### Saving results to a file
