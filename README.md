@@ -127,6 +127,8 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli refresh [--all]` -- re-download the active MLS's metadata (or clear every cached copy)
   - `reso_cli photos LISTING_ID` -- open a photo slideshow for a listing (`--output FILE.html`, `--no-open`)
   - `reso_cli details LISTING_ID` -- open a full listing details page: photos, key facts, map and every field (`--output FILE.html`, `--no-open`)
+  - `reso_cli compare LISTING_ID --mls A --mls B` -- compare one listing between two MLS connections, field by field
+  - `reso_cli compare-report --mls A --mls B (filters | --ids … | --ids-file FILE)` -- compare many listings and write a Markdown report (`--output`, `--max`, `--save-data`)
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
   - `reso_cli setup` -- install reso_cli's Ruby gems (first-time setup)
 
@@ -160,6 +162,7 @@ The tests run offline in a few seconds. They use a throwaway config file and fak
 - health checks, token expiry, metadata refresh, and retrying throttled requests
 - photo slideshow pages: photo order, skipping videos and documents, and escaping listing text
 - listing details pages: field grouping, labels, value formatting, hidden addresses, and escaping
+- feed comparison: field classification, the comparison page, and the batch report
 
 GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
 
@@ -220,6 +223,40 @@ From the shell:
 ```bash
 ./reso_cli details OC26210043                       # MLS number or ListingKey; opens your browser
 ./reso_cli details OC26210043 --output ~/Desktop/85-sedgewick.html --no-open
+```
+
+### Comparing two feeds
+
+If you have two connections that should carry the same listings, for example a data aggregator and the MLS's own feed, reso_cli can compare them.
+
+**One listing, side by side:**
+
+```text
+compare listing OC26210043 between CDL and CRMLS
+```
+
+This opens a page that lines the two records up field by field. It counts the fields that are **different**, **only in one feed**, the **same value in a different format** (e.g. `949-572-5372` vs `9495725372`), **system fields** (each system's own keys, IDs and timestamps, which are expected to differ) and the **same**. For list fields such as interior features, it shows exactly which values one feed is missing. Both feeds' photos are shown as well.
+
+**Many listings, as a report:**
+
+```text
+compare all active listings in Irvine between CDL and CRMLS and save a report to ~/analysis
+```
+
+reso_cli pulls the matching listings from both feeds, matches them by MLS number and writes a Markdown report. It covers:
+- **missing listings and why:** e.g. a status change that hasn't reached one feed yet (and for how long), a listing hidden from internet display, or a listing absent from that feed altogether
+- **status mismatches** between the feeds
+- **the fields that differ most often**, with examples
+- **list values one feed leaves out**
+- **fields only one feed fills in**
+
+From the shell:
+
+```bash
+./reso_cli compare OC26210043 --mls CDL --mls CRMLS
+./reso_cli compare-report --mls CDL --mls CRMLS --eq City=Irvine --eq StandardStatus=Active \
+  --output irvine-report.md --save-data irvine-data
+./reso_cli compare-report --mls CDL --mls CRMLS --ids OC26210043,OC26219911    # or --ids-file ids.txt
 ```
 
 ### Saving results to a file

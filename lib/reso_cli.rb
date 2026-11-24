@@ -10,6 +10,9 @@ require "time"
 require_relative "reso_cli/postman"
 require_relative "reso_cli/slideshow"
 require_relative "reso_cli/detail_page"
+require_relative "reso_cli/compare"
+require_relative "reso_cli/compare_page"
+require_relative "reso_cli/compare_report"
 
 module ResoCli
   APP_ROOT           = File.expand_path("../..", __FILE__)
@@ -54,6 +57,8 @@ module ResoCli
       when "refresh"   then cmd_refresh(args)
       when "photos"    then cmd_photos(args)
       when "details"   then cmd_details(args)
+      when "compare"   then cmd_compare(args)
+      when "compare-report" then cmd_compare_report(args)
       when "help", nil, "-h", "--help" then cmd_help
       else
         abort "Unknown command: #{command}. Run 'reso_cli help' for usage."
@@ -144,6 +149,8 @@ module ResoCli
     end
 
     def active_mls_name
+      return @mls_override if @mls_override
+
       name = config_file["active"]
       return name if name && mls_entries.key?(name)
       return mls_entries.keys.first if mls_entries.size == 1
@@ -528,6 +535,184 @@ module ResoCli
       puts JSON.pretty_generate(result)
     end
 
+    # Run the block against a named MLS instead of the active one (config and client swapped temporarily)
+    def with_mls(query)
+      name = find_mls_name(query)
+      abort "No MLS named '#{query}'. Available: #{mls_entries.keys.join(', ')}" unless name
+
+      saved = [@config, @client, @mls_override]
+      @config = symbolize(mls_entries[name])
+      @client = nil
+      @mls_override = name
+      yield name
+    ensure
+      @config, @client, @mls_override = saved if saved
+    end
+
+    # Parse "--mls A --mls B" (exactly two) out of args; returns [a, b]
+    def two_mls(args)
+      names = []
+      while (i = args.index("--mls"))
+        _, value = args.slice!(i, 2)
+        abort "Missing value for --mls" unless value
+        names << value
+      end
+      abort "Give exactly two MLSs to compare, e.g. --mls CDL --mls CRMLS (see 'reso_cli mls')" unless names.size == 2
+
+      names
+    end
+
+    # Compare one listing between two MLS connections, field by field, as a web page
+    def cmd_compare(args)
+      a_query, b_query = two_mls(args)
+      id = nil
+      output = nil
+      open_page = ENV["RESO_CLI_NO_OPEN"].to_s.empty?
+      until args.empty?
+        arg = args.shift
+        case arg
+        when "--no-open" then open_page = false
+        when "--output"
+          output = args.shift
+          abort "Missing value for --output" unless output
+        else
+          abort "Unexpected argument: #{arg}" if id
+          id = arg
+        end
+      end
+      abort "Usage: reso_cli compare LISTING_ID --mls A --mls B [--output FILE.html] [--no-open]" unless id
+
+      a_name = b_name = nil
+      a = with_mls(a_query) { |n| a_name = n; find_listing_with_media(id) } || {}
+      b = with_mls(b_query) { |n| b_name = n; find_listing_with_media(id) } || {}
+      abort "Listing '#{id}' wasn't found in #{a_name} or #{b_name}." if a.empty? && b.empty?
+
+      safe = ->(s) { s.to_s.gsub(/[^\w.-]/, "_") }
+      path = ResoCli.user_path(output || File.join(CACHE_DIR, "compare", "compare-#{safe.(id)}-#{safe.(a_name)}-vs-#{safe.(b_name)}.html"))
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, ComparePage.html(a_name, a, b_name, b))
+
+      counts = Compare.summary(Compare.compare(a, b))
+      result = { listing_id: id, a: a_name, b: b_name }
+      result[:missing] = [a.empty? ? a_name : nil, b.empty? ? b_name : nil].compact if a.empty? || b.empty?
+      result[:counts] = counts.transform_keys { |k| k.to_s }
+      result[:photos] = { a_name => Slideshow.photos(a["Media"]).size, b_name => Slideshow.photos(b["Media"]).size }
+      result[:saved] = path
+      result[:opened] = open_page && open_in_browser(path)
+      puts JSON.pretty_generate(result)
+    end
+
+    # Compare many listings between two MLS connections and write a Markdown report
+    def cmd_compare_report(args)
+      a_query, b_query = two_mls(args)
+      take = lambda do |flag|
+        i = args.index(flag)
+        return nil unless i
+
+        _, value = args.slice!(i, 2)
+        abort "Missing value for #{flag}" unless value
+        value
+      end
+      ids_arg = take.("--ids")
+      ids_file = take.("--ids-file")
+      output = take.("--output")
+      save_data = take.("--save-data")
+      max = (take.("--max") || 2000).to_i
+      lookup_limit = (take.("--lookup-limit") || 200).to_i
+      abort "--max needs a positive number" unless max.positive?
+
+      ids = nil
+      ids = ids_arg.split(/[\s,]+/).reject(&:empty?) if ids_arg
+      if ids_file
+        path = ResoCli.user_path(ids_file)
+        abort "File not found: #{path}" unless File.exist?(path)
+        ids = (ids || []) + File.read(path).split(/[\s,]+/).reject(&:empty?)
+      end
+      options = parse_query_options(["Property", *args])
+      options.delete(:resource)
+      has_filters = %i[eq ne gt ge lt le].any? { |k| options[k].any? } || options[:filter]
+      unless ids || has_filters
+        abort "Say which listings to compare: search filters (e.g. --eq City=Irvine --eq StandardStatus=Active), --ids ID1,ID2, or --ids-file FILE"
+      end
+      abort "Use either --ids/--ids-file or search filters, not both" if ids && has_filters
+      options[:top] ||= 200
+
+      pull = lambda do |mls|
+        with_mls(mls) do |name|
+          warn "Fetching listings from #{name}..."
+          resource = resolve_resource("Property")
+          records, capped = ids ? fetch_by_ids(resource, ids) : fetch_query(resource, options, max)
+          [name, records, capped, config[:endpoint], Time.now]
+        end
+      end
+      a_name, a_records, a_capped, a_endpoint, a_pulled = pull.(a_query)
+      b_name, b_records, b_capped, b_endpoint, b_pulled = pull.(b_query)
+
+      a_ids = a_records.map { |r| r["ListingId"].to_s }
+      b_ids = b_records.map { |r| r["ListingId"].to_s }
+      lookup = lambda do |mls, wanted|
+        found = {}
+        with_mls(mls) do |name|
+          warn "Looking up #{[wanted.size, lookup_limit].min} listing(s) missing from the other feed in #{name}..." if wanted.any?
+          resource = resolve_resource("Property")
+          wanted.first(lookup_limit).each do |id|
+            found[id] = with_retries { resource.query.eq(ListingId: id).limit(1).results.first }
+          end
+        end
+        found
+      end
+      lookups_in_b = lookup.(b_query, a_ids - b_ids)
+      lookups_in_a = lookup.(a_query, b_ids - a_ids)
+
+      selection = if ids
+                    "#{ids.size} MLS numbers given with --ids/--ids-file"
+                  else
+                    parts = %i[eq ne gt ge lt le].flat_map { |op| options[op].map { |f, v| "#{f} #{op} #{v}" } }
+                    parts << "filter: #{options[:filter]}" if options[:filter]
+                    "every listing matching #{parts.join(', ')}"
+                  end
+      meta = {
+        generated_at: Time.now, a_pulled_at: a_pulled, b_pulled_at: b_pulled, a_endpoint: a_endpoint, b_endpoint: b_endpoint,
+        selection: selection, filters: options[:eq].transform_values(&:to_s), max: max, capped: a_capped || b_capped,
+        requested_ids: ids
+      }
+      report = CompareReport.build(a_name: a_name, b_name: b_name, a_records: a_records, b_records: b_records,
+                                   lookups_in_a: lookups_in_a, lookups_in_b: lookups_in_b, meta: meta)
+
+      safe = ->(str) { str.to_s.gsub(/[^\w.-]/, "_") }
+      path = ResoCli.user_path(output || "compare-report-#{safe.(a_name)}-vs-#{safe.(b_name)}-#{Time.now.strftime('%Y%m%d-%H%M')}.md")
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, report + "\n")
+      if save_data
+        dir = ResoCli.user_path(save_data)
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "#{safe.(a_name)}.json"), JSON.pretty_generate(a_records))
+        File.write(File.join(dir, "#{safe.(b_name)}.json"), JSON.pretty_generate(b_records))
+      end
+
+      puts JSON.pretty_generate(
+        report: path, a: a_name, b: b_name, a_listings: a_records.size, b_listings: b_records.size,
+        matched: (a_ids & b_ids).size, only_in_a: (a_ids - b_ids).size, only_in_b: (b_ids - a_ids).size,
+        capped: meta[:capped], data: save_data ? ResoCli.user_path(save_data) : nil
+      )
+    end
+
+    def fetch_query(resource, options, max)
+      fetched = fetch_results(build_query(resource, options), all: true, max: max)
+      [fetched[:records], fetched[:hit_max]]
+    end
+
+    # Fetch listings by MLS number, in batches of OR'd ListingId filters
+    def fetch_by_ids(resource, ids)
+      records = []
+      ids.uniq.each_slice(40) do |batch|
+        filter = batch.map { |id| "ListingId eq '#{id.gsub("'", "''")}'" }.join(" or ")
+        query = resource.query.set_query_params("$filter" => filter).limit(200)
+        records.concat(fetch_results(query, all: true, max: 10_000)[:records])
+      end
+      [records, false]
+    end
+
     # Look a listing up by MLS number (ListingId), then by ListingKey, with its Media expanded
     def find_listing_with_media(id)
       resource = resolve_resource("Property")
@@ -763,6 +948,11 @@ module ResoCli
           photos LISTING_ID             Open a photo slideshow for a listing (MLS number or ListingKey)
           details LISTING_ID            Open a full listing detail page: photos, key facts, map, every field
                                         [--output FILE.html] [--no-open]
+          compare LISTING_ID --mls A --mls B
+                                        Compare one listing between two MLS connections, field by field
+          compare-report --mls A --mls B (SEARCH FILTERS | --ids ID,... | --ids-file FILE)
+                                        Compare many listings and write a Markdown report
+                                        [--output FILE.md] [--max N] [--save-data DIR]
           postman FILE                  Show the MLS auth settings in a Postman collection
           setup                         Install reso_cli's Ruby gems (first-time setup)
           help                          Show this help
