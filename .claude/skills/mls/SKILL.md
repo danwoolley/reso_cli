@@ -86,15 +86,4 @@ When the user asks about real estate listings:
 - **`--filter` and structured flags are mutually exclusive**: When `--filter` is present, all `--eq`/`--ge`/etc. are ignored. Plan your queries accordingly.
 - JSON output goes to stdout; format it nicely when presenting to the user (table format preferred).
 
-## CRMLS-Specific Notes (h.api.crmls.org)
-
-The following quirks apply **only** when the active MLS endpoint (see `./reso_cli mls`) is `https://h.api.crmls.org/Reso/OData` (CRMLS / SoCal MLS). Other MLS servers may not have these limitations.
-
-- **Do NOT use `--select`** — CRMLS returns 400 if `$select` is included. Full records are always returned; extract the fields you need from the JSON output.
-- **Do NOT use `--filter` for enum fields** — Fields typed as `OData.Models.*` enums (City, StandardStatus, PropertySubType, etc.) cause 400 errors in raw `$filter` expressions. Always use structured `--eq`/`--ne` for these fields instead.
-- Use `--filter` ONLY for string functions (`contains()`, `startswith()`) or complex OR logic on non-enum fields.
-- Use `ListingKeyNumeric` (not `ListingKey`) — CRMLS populates `ListingKeyNumeric` only; `ListingKey` is null.
-- Use `StreetNumberNumeric` (not `StreetNumber`) — `StreetNumber` is null on CRMLS.
-- **No `UnparsedAddress`** — Build addresses from `StreetNumberNumeric`, `StreetName`, `StreetSuffix`.
-
 For detailed RESO field names and common query patterns, see [reference.md](reference.md).

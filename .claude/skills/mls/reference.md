@@ -1,15 +1,5 @@
 # RESO Data Dictionary - Common Fields Reference
 
-## CRMLS-Specific Notes (h.api.crmls.org)
-
-The following quirks apply **only** when the configured endpoint is CRMLS (`https://h.api.crmls.org/Reso/OData`). Other MLS servers may not have these limitations.
-
-- **`$select` not supported** — Never use `--select`; CRMLS returns 400. Full records are always returned.
-- **Enum fields** (typed `OData.Models.*`) — City, StandardStatus, PropertySubType, StreetSuffix, StreetDirPrefix, etc. MUST use structured `--eq`/`--ne` flags. They cause 400 errors in raw `--filter` OData expressions on CRMLS.
-- **`ListingKeyNumeric`** — Use this instead of `ListingKey` (which is null on CRMLS).
-- **`StreetNumberNumeric`** — Use this instead of `StreetNumber` (which is null on CRMLS).
-- **No `UnparsedAddress`** — Build addresses from `StreetNumberNumeric`, `StreetName`, `StreetSuffix` on CRMLS.
-
 ## Property Resource - Key Fields
 
 ### Identification
