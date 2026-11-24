@@ -35,8 +35,8 @@ Start Claude Code in the `reso_cli` folder and type:
 
 The first time, Claude checks that Ruby and reso_cli's gems are installed, and installs whatever's missing, asking you first. Then it asks a few simple questions: what to call the MLS, its API address, and your credentials. You can:
 
-- **Point it at a Postman collection** (a `.json` file) if your MLS or data vendor sent you one. Claude reads the settings straight from the file, so your secrets never appear in the chat. This is the easiest and safest option.
-- **Paste the connection details**, for example straight from the email your MLS sent. Claude picks out the API URL, then either a bearer token or a client ID and secret (OAuth2).
+- **Paste the connection details**, for example straight from the email your MLS sent. Claude picks out the API URL, then either an access token or a client ID and secret (OAuth2). This is the usual way.
+- **Or point it at a Postman collection** (a `.json` file) if your MLS or data vendor sent one. Claude reads the settings straight from the file, so your secrets never appear in the chat.
 
 Claude then tests the connection and tells you whether it worked. Run `/mls-setup` again for each MLS you want to add. The newest one becomes active.
 
@@ -134,6 +134,21 @@ In folder .claude/skills:
     - SKILL.md -- friendly setup interview; adds a new named MLS from pasted details or a Postman collection, then tests it
   - /mls-use
     - SKILL.md -- switch the active MLS by name or by picking from a list
+
+
+## Running tests
+
+```bash
+bundle exec rake test
+```
+
+The tests run offline in a few seconds. They use a throwaway config file and fake fixtures in `test/fixtures`, so they never touch your MLS connections or contact a server. They cover:
+
+- managing MLS connections: add, use, remove and moving an old config
+- Postman import
+- how search flags become OData queries
+
+GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
 
 
 ## Claude Code usage

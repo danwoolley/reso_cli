@@ -10,7 +10,8 @@ require_relative "reso_cli/postman"
 module ResoCli
   APP_ROOT           = File.expand_path("../..", __FILE__)
   # Where MLS configs lived before they moved out of the repo; migrated automatically
-  LEGACY_CONFIG_PATH = File.join(APP_ROOT, "config", "mls.yml")
+  # (RESO_CLI_LEGACY_CONFIG overrides it; the test suite uses that to stay isolated)
+  LEGACY_CONFIG_PATH = ENV["RESO_CLI_LEGACY_CONFIG"] || File.join(APP_ROOT, "config", "mls.yml")
   CACHE_DIR          = File.expand_path("~/.cache/mls")
   CONFIG_HEADER      = <<~YAML
     # reso_cli MLS connections. Contains credentials: don't commit or share this file.
@@ -562,8 +563,9 @@ module ResoCli
 
     def coerce_value(value)
       case value
-      when /\A\d+\z/        then value.to_i
-      when /\A\d+\.\d+\z/   then value.to_f
+      # Leading zeros mean an identifier (ZIP code, ID), not a number: keep it as text
+      when /\A(0|[1-9]\d*)\z/          then value.to_i
+      when /\A(0|[1-9]\d*)\.\d+\z/     then value.to_f
       when /\Atrue\z/i       then true
       when /\Afalse\z/i      then false
       else value
