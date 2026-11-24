@@ -14,6 +14,8 @@ require_relative "reso_cli/compare"
 require_relative "reso_cli/compare_page"
 require_relative "reso_cli/compare_report"
 require_relative "reso_cli/history"
+require_relative "reso_cli/comps"
+require_relative "reso_cli/comps_page"
 
 module ResoCli
   APP_ROOT           = File.expand_path("../..", __FILE__)
@@ -60,6 +62,7 @@ module ResoCli
       when "details"   then cmd_details(args)
       when "compare"   then cmd_compare(args)
       when "compare-report" then cmd_compare_report(args)
+      when "comps"     then cmd_comps(args)
       when "help", nil, "-h", "--help" then cmd_help
       else
         abort "Unknown command: #{command}. Run 'reso_cli help' for usage."
@@ -744,6 +747,81 @@ module ResoCli
       [records, false]
     end
 
+    # Comparable sales for a listing, as a web page with a value range, map and ranked table
+    def cmd_comps(args)
+      take = lambda do |flag|
+        i = args.index(flag)
+        return nil unless i
+
+        _, value = args.slice!(i, 2)
+        abort "Missing value for #{flag}" unless value
+        value
+      end
+      months = (take.("--months") || 6).to_i
+      radius = (take.("--radius") || 1).to_f
+      max = (take.("--max") || 10).to_i
+      output = take.("--output")
+      open_page = ENV["RESO_CLI_NO_OPEN"].to_s.empty?
+      open_page = false if args.delete("--no-open")
+      abort "--months, --radius and --max must be positive" unless months.positive? && radius.positive? && max.positive?
+      id = args.shift
+      abort "Unexpected argument: #{args.first}" if args.any?
+      abort "Usage: reso_cli comps LISTING_ID [--months 6] [--radius 1] [--max 10] [--output FILE.html] [--no-open]" unless id
+
+      subject = find_listing_with_media(id)
+      abort "No listing found with MLS number or ListingKey '#{id}' on #{active_mls_name}." unless subject
+
+      resource = resolve_resource("Property")
+      search = lambda do |m, r|
+        options = Comps.criteria(subject, months: m, radius: r).merge(top: 200)
+        candidates = fetch_results(build_query(resource, options), all: true, max: 1000)[:records]
+        Comps.rank(subject, candidates, radius: r, months: m, max: max)
+      end
+      comps = search.(months, radius)
+      widened = false
+      if comps.size < 3
+        months *= 2
+        radius *= 2
+        comps = search.(months, radius)
+        widened = true
+      end
+
+      photo_for = { subject["ListingId"].to_s => Slideshow.photos(subject["Media"]).first&.dig("url") }
+      photo_for.merge!(first_photos(resource, comps.map { |c| c.record["ListingId"].to_s }))
+      estimate = Comps.estimate(subject, comps)
+
+      safe = ->(str) { str.to_s.gsub(/[^\w.-]/, "_") }
+      path = ResoCli.user_path(output || File.join(CACHE_DIR, "comps", "comps-#{safe.(active_mls_name)}-#{safe.(subject['ListingId'] || id)}.html"))
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, CompsPage.html(subject, comps, estimate: estimate, photo_for: photo_for, mls_name: active_mls_name,
+                                                      months: months, radius: radius, widened: widened))
+
+      result = {
+        listing_id: subject["ListingId"], address: Slideshow.address(subject), comps: comps.size,
+        months: months, radius_miles: radius, widened: widened
+      }
+      if estimate
+        result[:median_price_per_sqft] = estimate[:median_ppsf].round
+        result[:value_range] = [estimate[:low], estimate[:high]] if estimate[:low]
+      end
+      result[:saved] = path
+      result[:opened] = open_page && open_in_browser(path)
+      puts JSON.pretty_generate(result)
+    end
+
+    # First photo URL for each listing, fetched in batches with $expand=Media
+    def first_photos(resource, ids)
+      photos = {}
+      ids.each_slice(20) do |batch|
+        filter = batch.map { |i| "ListingId eq '#{i.gsub("'", "''")}'" }.join(" or ")
+        records = with_retries { resource.query.set_query_params("$filter" => filter).expand("Media").limit(50).results }
+        records.each { |r| photos[r["ListingId"].to_s] = Slideshow.photos(r["Media"]).first&.dig("url") }
+      end
+      photos
+    rescue ResoTransport::RequestError
+      photos
+    end
+
     # Look a listing up by MLS number (ListingId), then by ListingKey, with its Media expanded
     def find_listing_with_media(id)
       resource = resolve_resource("Property")
@@ -981,6 +1059,8 @@ module ResoCli
                                         [--output FILE.html] [--no-open]
           compare LISTING_ID --mls A --mls B
                                         Compare one listing between two MLS connections, field by field
+          comps LISTING_ID              Comparable recent sales with a value range, map and table
+                                        [--months 6] [--radius 1] [--max 10] [--output FILE.html] [--no-open]
           compare-report --mls A --mls B (SEARCH FILTERS | --ids ID,... | --ids-file FILE)
                                         Compare many listings and write a Markdown report
                                         [--output FILE.md] [--max N] [--save-data DIR]

@@ -1,6 +1,6 @@
 ---
 name: mls
-description: Query the active MLS for real estate listings, comparable properties, recent sales and market data via the RESO Web API, show a listing's photos or a full portal-style details page (photos, facts, map, every field), compare listings between two MLS feeds, and save results to CSV/JSON files. Use for questions about homes, listings, prices, sales, agents or offices. Not for adding, switching or removing MLS connections (see mls-setup and mls-use).
+description: Query the active MLS for real estate listings, comparable properties, recent sales and market data via the RESO Web API, show a listing's photos or a full portal-style details page (photos, facts, map, every field), find comparable sales with a value range, compare listings between two MLS feeds, and save results to CSV/JSON files. Use for questions about homes, listings, prices, sales, agents or offices. Not for adding, switching or removing MLS connections (see mls-setup and mls-use).
 allowed-tools: Bash(./reso_cli *)
 ---
 
@@ -101,6 +101,19 @@ Use these when the user wants to check one MLS connection against another, e.g. 
   - Save the report where the user keeps their analysis, if they've said where. Otherwise it goes in the current folder. `--save-data DIR` keeps the raw records from both feeds.
   - `--max N` caps listings per feed (default 2,000). For a broad query, run `count` first and confirm with the user before a very large pull.
   - Afterwards, read the report and summarize the key findings for the user, along with the report's path.
+
+## Comparable sales (comps)
+
+When the user asks for comps ("show me comps for this listing", "what are similar homes selling for?", "what's 85 Sedgewick worth?"):
+
+```bash
+./reso_cli comps OC26210043                    # defaults: last 6 months, within 1 mile, top 10
+./reso_cli comps OC26210043 --months 12 --radius 2 --max 15
+```
+
+- **The search:** closed sales of the same property type and subtype, within the radius, closed within the period, with living area within ±25% and bedrooms within ±1. Results are ranked by similarity (distance, size, bedrooms, how recent). If fewer than 3 turn up, the search automatically widens once, doubling both the radius and the period.
+- **The page:** opens in the browser with the subject listing, a **value range** (median and middle-half price per sq ft × the subject's sq ft), a map with the subject and numbered comps, and a table (photo, address, sold date, sold and list price, beds/baths, sq ft, $/sq ft, distance).
+- **Afterwards,** summarize the range and the closest comps for the user. Always say it's a rough price-per-sq-ft estimate, **not an appraisal**. Point out when the comps are mostly larger or smaller than the subject, since price per sq ft falls as size rises, which skews the range.
 
 ## Saving and exporting results
 
