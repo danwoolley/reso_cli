@@ -9,6 +9,7 @@ require "csv"
 require "time"
 require_relative "reso_cli/postman"
 require_relative "reso_cli/slideshow"
+require_relative "reso_cli/detail_page"
 
 module ResoCli
   APP_ROOT           = File.expand_path("../..", __FILE__)
@@ -52,6 +53,7 @@ module ResoCli
       when "postman"   then cmd_postman(args)
       when "refresh"   then cmd_refresh(args)
       when "photos"    then cmd_photos(args)
+      when "details"   then cmd_details(args)
       when "help", nil, "-h", "--help" then cmd_help
       else
         abort "Unknown command: #{command}. Run 'reso_cli help' for usage."
@@ -478,6 +480,20 @@ module ResoCli
 
     # Build a photo slideshow page for one listing and open it in the browser
     def cmd_photos(args)
+      listing_page(args, command: "photos") do |listing, photos|
+        Slideshow.html(listing, photos, mls_name: active_mls_name)
+      end
+    end
+
+    # Build a portal-style detail page (photos, key facts, map, every field) and open it
+    def cmd_details(args)
+      listing_page(args, command: "details") do |listing, photos|
+        DetailPage.html(listing, photos, mls_name: active_mls_name)
+      end
+    end
+
+    # Shared by photos and details: find the listing, build the page, save it, open it
+    def listing_page(args, command:)
       id = nil
       output = nil
       open_page = ENV["RESO_CLI_NO_OPEN"].to_s.empty?
@@ -493,18 +509,20 @@ module ResoCli
           id = arg
         end
       end
-      abort "Usage: reso_cli photos LISTING_ID [--output FILE.html] [--no-open]  (MLS number or ListingKey)" unless id
+      abort "Usage: reso_cli #{command} LISTING_ID [--output FILE.html] [--no-open]  (MLS number or ListingKey)" unless id
 
       listing = find_listing_with_media(id)
       abort "No listing found with MLS number or ListingKey '#{id}' on #{active_mls_name}." unless listing
 
       photos = Slideshow.photos(listing["Media"])
-      path = ResoCli.user_path(output || File.join(CACHE_DIR, "photos", "photos-#{(listing['ListingId'] || id).to_s.gsub(/[^\w.-]/, '_')}.html"))
+      name = "#{command}-#{(listing['ListingId'] || id).to_s.gsub(/[^\w.-]/, '_')}.html"
+      path = ResoCli.user_path(output || File.join(CACHE_DIR, command, name))
       FileUtils.mkdir_p(File.dirname(path))
-      File.write(path, Slideshow.html(listing, photos, mls_name: active_mls_name))
+      File.write(path, yield(listing, photos))
 
       opened = open_page && open_in_browser(path)
       result = { listing_id: listing["ListingId"], address: Slideshow.address(listing), photos: photos.size, saved: path, opened: opened }
+      result[:fields] = listing.count { |k, v| k != "Media" && !DetailPage.empty?(v) } if command == "details"
       result[:note] = "Photo links from this MLS may expire; run this command again if photos stop loading." if photos.any?
       result[:note] = "This listing has no photos." if photos.empty?
       puts JSON.pretty_generate(result)
@@ -743,6 +761,7 @@ module ResoCli
           test [--all]                  Check that the active MLS (or every MLS) accepts your credentials
           refresh [--all]               Re-download the active MLS's metadata (--all: clear every cache)
           photos LISTING_ID             Open a photo slideshow for a listing (MLS number or ListingKey)
+          details LISTING_ID            Open a full listing detail page: photos, key facts, map, every field
                                         [--output FILE.html] [--no-open]
           postman FILE                  Show the MLS auth settings in a Postman collection
           setup                         Install reso_cli's Ruby gems (first-time setup)
