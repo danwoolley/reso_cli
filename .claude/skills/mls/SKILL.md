@@ -1,6 +1,6 @@
 ---
 name: mls
-description: Query the local MLS for real estate listings, comparable properties, recent sales, and market data via the RESO Web API.
+description: Query the active MLS for real estate listings, comparable properties, recent sales and market data via the RESO Web API, and save results to CSV/JSON files. Use for questions about homes, listings, prices, sales, agents or offices. Not for adding, switching or removing MLS connections (see mls-setup and mls-use).
 allowed-tools: Bash(./reso_cli *)
 ---
 

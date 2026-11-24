@@ -40,12 +40,16 @@ The first time, Claude checks that Ruby and reso_cli's gems are installed, and i
 
 Claude then tests the connection and tells you whether it worked. Run `/mls-setup` again for each MLS you want to add. The newest one becomes active.
 
-### Switch between MLSs
+### Switch, list or remove MLSs
 
 ```text
-/mls-use            # pick from a list
-/mls-use CRMLS      # or choose by name
+/mls-use                  # pick from a list
+/mls-use CRMLS            # or choose by name
+/mls-use list             # see your MLSs and which one is active
+/mls-use remove ACTRIS    # remove one (Claude asks you to confirm first)
 ```
+
+You don't need the slash commands: plain requests like "switch to CRMLS", "which MLS am I using?", "add another MLS" or "remove ACTRIS" work too.
 
 ### Where your credentials are stored
 
@@ -133,7 +137,7 @@ In folder .claude/skills:
   - /mls-setup
     - SKILL.md -- friendly setup interview; adds a new named MLS from pasted details or a Postman collection, then tests it
   - /mls-use
-    - SKILL.md -- switch the active MLS by name or by picking from a list
+    - SKILL.md -- list your MLSs, switch the active one (by name or from a list), or remove one
 
 
 ## Running tests

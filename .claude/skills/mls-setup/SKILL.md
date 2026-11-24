@@ -1,6 +1,6 @@
 ---
 name: mls-setup
-description: Add a new MLS RESO Web API connection (name, endpoint, credentials) to reso_cli, from connection details the user pastes (or a Postman collection).
+description: Add a new MLS RESO Web API connection (name, endpoint, credentials) to reso_cli, from connection details the user pastes (or a Postman collection), and handle first-time setup. Use when the user wants to add, connect or set up an MLS ("add another MLS", "connect to Bright MLS", "here are my MLS API credentials"), or replace an existing MLS's credentials, e.g. an expired token.
 allowed-tools: Bash(./reso_cli help), Bash(./reso_cli setup), Bash(./reso_cli mls), Bash(./reso_cli add *), Bash(./reso_cli postman *), Bash(./reso_cli test), Bash(./reso_cli use *), Bash(./reso_cli remove *)
 ---
 
