@@ -68,7 +68,7 @@ When the user asks about real estate listings:
 
 ## CRMLS-Specific Notes (h.api.crmls.org)
 
-The following quirks apply **only** when the configured endpoint in `config/mls.yml` is `https://h.api.crmls.org/Reso/OData` (CRMLS / SoCal MLS). Other MLS servers may not have these limitations.
+The following quirks apply **only** when the active MLS endpoint (see `./reso_cli mls`) is `https://h.api.crmls.org/Reso/OData` (CRMLS / SoCal MLS). Other MLS servers may not have these limitations.
 
 - **Do NOT use `--select`** — CRMLS returns 400 if `$select` is included. Full records are always returned; extract the fields you need from the JSON output.
 - **Do NOT use `--filter` for enum fields** — Fields typed as `OData.Models.*` enums (City, StandardStatus, PropertySubType, etc.) cause 400 errors in raw `$filter` expressions. Always use structured `--eq`/`--ne` for these fields instead.

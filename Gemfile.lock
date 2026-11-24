@@ -1,6 +1,6 @@
 GIT
   remote: https://github.com/danwoolley/reso_transport
-  revision: d75f33fa632b40e0a98ff9af9b21a796ddf5037b
+  revision: c94d4ac5f4013d331423d86822382c70353ed396
   specs:
     reso_transport (2.0.0)
       faraday (~> 2)
