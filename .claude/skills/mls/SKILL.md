@@ -50,6 +50,23 @@ Note: Quote values containing spaces (e.g., `--eq "City=Newport Beach"`).
 ./reso_cli count Property --eq "City=Newport Beach" --eq StandardStatus=Active
 ```
 
+### Save results to a file
+```bash
+./reso_cli search Property --eq "City=Irvine" --eq StandardStatus=Active --all --output irvine-active.csv
+./reso_cli search Property --eq "City=Irvine" --top 100 --output irvine.json
+./reso_cli get Property 412212140 --output listing.json
+```
+
+## Saving and exporting results
+
+When the user asks to save, export or download results, or wants them "in a spreadsheet", "in Excel" or "as a file":
+
+- **Re-run the query with `--output FILE`. Never write the results file yourself**, e.g. with the Write tool or by copying results from earlier output. The CLI writes the server's exact data, which never has to pass through the conversation.
+- **Pick the format from the request.** Spreadsheet, Excel or CSV means a `.csv` file (one row per listing, one column per field). Otherwise use `.json`. Choose a descriptive file name (e.g. `irvine-active-2026-11-24.csv`) unless the user gave one. Relative paths are saved in the folder Claude Code is running in.
+- **Use `--all` when they want every match** ("all active listings in Irvine"). Without it, only the first page is saved. `--all` stops at 10,000 records by default. Before a very large export, run `count` first, tell the user how many records match, and raise the limit with `--max N` if they confirm.
+- **Use `--select`** to limit the columns when the user only wants certain fields, which makes the spreadsheet easier to read. Skip this on servers that don't support `$select` (see the CRMLS notes).
+- **Afterwards, report** the full path of the saved file, how many records were saved, and any `note` from the output (e.g. that more matches exist).
+
 ## Query Strategy
 
 When the user asks about real estate listings:

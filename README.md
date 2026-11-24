@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
 
-Connect to as many MLS RESO Web API servers as you like and switch between them. It has been tested with CRMLS (https://h.api.crmls.org/Reso/OData; the Skills include special notes for it), Bridge Interactive (ACTRIS) and CDL / Lone Wolf.
+Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Results can be saved to a spreadsheet (CSV) or JSON file. It has been tested with CRMLS (https://h.api.crmls.org/Reso/OData; the Skills include special notes for it), Bridge Interactive (ACTRIS) and CDL / Lone Wolf.
 
 
 ## Prerequisites
@@ -110,8 +110,8 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
 
   - `reso_cli resources` -- discover what the MLS exposes
   - `reso_cli fields RESOURCE [--match PATTERN]` -- list/search field names
-  - `reso_cli search RESOURCE [filters]` -- query with structured or raw OData filters
-  - `reso_cli get RESOURCE KEY` -- fetch a single record
+  - `reso_cli search RESOURCE [filters]` -- query with structured or raw OData filters; add `--output FILE` to save results (`.csv` or JSON), `--all` for every page, `--max N` to cap `--all` (default 10,000)
+  - `reso_cli get RESOURCE KEY` -- fetch a single record (`--output FILE` to save it)
   - `reso_cli count RESOURCE [filters]` -- count matching records
   - `reso_cli mls` -- list configured MLSs (credentials are never printed)
   - `reso_cli use NAME` -- switch the active MLS
@@ -147,6 +147,7 @@ The tests run offline in a few seconds. They use a throwaway config file and fak
 - managing MLS connections: add, use, remove and moving an old config
 - Postman import
 - how search flags become OData queries
+- saving results to JSON and CSV, and fetching every page with `--all`
 
 GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
 
@@ -160,6 +161,33 @@ show me 3-bedroom homes under $500k in [your city]
 ```
 ```text
 what is the highest recorded sales price in [city] in the past 18 months?
+```
+
+### Saving results to a file
+
+Ask Claude to save any search to a file, in plain words:
+
+```text
+save all active listings in Irvine to a spreadsheet
+```
+```text
+export the last 6 months of sales in [city] as JSON
+```
+```text
+save those results to comps.csv
+```
+
+- **Spreadsheet or CSV** gives a `.csv` file that opens in Excel, Numbers or Google Sheets: one row per listing, one column per field. Otherwise you get a `.json` file.
+- **"All" means every match.** Claude follows every page of results, up to 10,000 records by default. For bigger exports, Claude tells you how many records match and asks before raising the limit.
+- **Files are saved in the folder you started Claude Code in**, unless you name another location. Claude tells you the full path and how many records were saved.
+- The file has exactly what the MLS returned. Claude has the CLI write it directly instead of copying results through the chat.
+
+From the shell, add `--output FILE` to `search` or `get` (and `--all` for every page):
+
+```bash
+./reso_cli search Property --eq City=Irvine --eq StandardStatus=Active --all --output irvine-active.csv
+./reso_cli search Property --eq City=Irvine --top 100 --output irvine.json
+./reso_cli get Property 412212140 --output listing.json
 ```
 
 

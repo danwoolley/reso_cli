@@ -5,6 +5,7 @@ require "fileutils"
 require "logger"
 require "digest"
 require "optparse"
+require "csv"
 require_relative "reso_cli/postman"
 
 module ResoCli
@@ -13,6 +14,8 @@ module ResoCli
   # (RESO_CLI_LEGACY_CONFIG overrides it; the test suite uses that to stay isolated)
   LEGACY_CONFIG_PATH = ENV["RESO_CLI_LEGACY_CONFIG"] || File.join(APP_ROOT, "config", "mls.yml")
   CACHE_DIR          = File.expand_path("~/.cache/mls")
+  # Safety limit for `search --all`, so a broad query can't pull millions of records by accident
+  DEFAULT_MAX_RECORDS = 10_000
   CONFIG_HEADER      = <<~YAML
     # reso_cli MLS connections. Contains credentials: don't commit or share this file.
     # Managed by `reso_cli add / use / remove` (or /mls-setup and /mls-use in Claude Code).
@@ -377,21 +380,98 @@ module ResoCli
       resource = resolve_resource(resource_name)
       query = build_query(resource, options)
 
-      results = query.results
-      output = { count: results.length, results: results }
-      output[:next_link] = query.next_link if query.next_link
+      fetched = fetch_results(query, all: options[:all], max: options[:max] || DEFAULT_MAX_RECORDS)
 
-      puts JSON.pretty_generate(output)
+      if options[:output]
+        puts JSON.pretty_generate(save_summary(options[:output], fetched))
+      else
+        output = { count: fetched[:records].length, results: fetched[:records] }
+        output[:next_link] = fetched[:next_link] if fetched[:next_link]
+        output[:note] = "Stopped at the --max limit of #{fetched[:max]} records" if fetched[:hit_max]
+        puts JSON.pretty_generate(output)
+      end
+    end
+
+    # Run a query and return its records. With all: true, follow @odata.nextLink pages
+    # until there are no more or `max` records have been fetched.
+    def fetch_results(query, all: false, max: DEFAULT_MAX_RECORDS)
+      records = query.results
+      next_link = query.next_link
+      hit_max = false
+
+      if all
+        while next_link
+          if records.length >= max
+            hit_max = true
+            break
+          end
+          warn "Fetched #{records.length} records so far..."
+          parsed = query.handle_response(query.resource.get_next_link_results(next_link))
+          records.concat(query.resource.parse(Array(parsed["value"])))
+          next_link = parsed["@odata.nextLink"]
+        end
+        if records.length > max
+          records = records.first(max)
+          hit_max = true
+        end
+      end
+
+      { records: records, next_link: next_link, hit_max: hit_max, max: max }
+    end
+
+    # Write records to FILE (CSV if it ends in .csv, otherwise JSON) and describe what was saved
+    def save_summary(file, fetched)
+      path = write_records(file, fetched[:records])
+      summary = { saved: path, format: File.extname(path).casecmp?(".csv") ? "csv" : "json", count: fetched[:records].length }
+      if fetched[:hit_max]
+        summary[:note] = "Stopped at the --max limit of #{fetched[:max]} records; more matches exist. Raise --max to save more."
+      elsif fetched[:next_link]
+        summary[:note] = "More matching records exist. Add --all to save every page."
+      end
+      summary
+    end
+
+    def write_records(file, records)
+      path = ResoCli.user_path(file)
+      FileUtils.mkdir_p(File.dirname(path))
+      if File.extname(path).casecmp?(".csv")
+        File.write(path, records_to_csv(records))
+      else
+        File.write(path, JSON.pretty_generate(records) + "\n")
+      end
+      path
+    end
+
+    # One row per record, one column per field (the union of all records' fields, in first-seen order).
+    # Lists and nested objects (e.g. Media) are written as JSON text in their cell.
+    def records_to_csv(records)
+      columns = records.each_with_object([]) { |r, cols| r.each_key { |k| cols << k unless cols.include?(k) } }
+      CSV.generate do |csv|
+        csv << columns
+        records.each do |r|
+          csv << columns.map do |c|
+            v = r[c]
+            v.is_a?(Hash) || v.is_a?(Array) ? v.to_json : v
+          end
+        end
+      end
     end
 
     def cmd_get(args)
       resource_name = args.shift
       key = args.shift
-      abort "Usage: reso_cli get RESOURCE KEY [--select FIELD1,FIELD2]" unless resource_name && key
+      abort "Usage: reso_cli get RESOURCE KEY [--select FIELD1,FIELD2] [--output FILE]" unless resource_name && key
 
       select_fields = nil
-      if args[0] == "--select" && args[1]
-        select_fields = args[1]
+      output_file = nil
+      until args.empty?
+        flag, val = args.shift(2)
+        abort "Missing value for #{flag}" unless val
+        case flag
+        when "--select" then select_fields = val
+        when "--output" then output_file = val
+        else abort "Unknown option for get: #{flag}"
+        end
       end
 
       resource = resolve_resource(resource_name)
@@ -410,13 +490,18 @@ module ResoCli
       parsed = JSON.parse(response.body)
       resource.entity_type.parse(parsed)
 
-      puts JSON.pretty_generate(parsed)
+      if output_file
+        puts JSON.pretty_generate(save_summary(output_file, { records: [parsed], next_link: nil, hit_max: false }))
+      else
+        puts JSON.pretty_generate(parsed)
+      end
     end
 
     def cmd_count(args)
       options = parse_query_options(args)
       resource_name = options.delete(:resource)
       abort "Usage: reso_cli count RESOURCE [options]" unless resource_name
+      abort "--output, --all and --max only work with search" if options[:output] || options[:all] || options[:max]
 
       resource = resolve_resource(resource_name)
       query = build_query(resource, options)
@@ -460,11 +545,17 @@ module ResoCli
           --top N                       Limit results
           --skip N                      Skip N results
 
+        Saving results (search and get):
+          --output FILE                 Save results to FILE: .csv for a spreadsheet, otherwise JSON
+          --all                         Fetch every page of matches, not just the first (search only)
+          --max N                       With --all, stop after N records (default: 10,000)
+
         Fields Options:
           --match PATTERN               Regex to filter field names
 
         Get Options:
           --select FIELD1,FIELD2        Fields to return
+          --output FILE                 Save the record to FILE (.csv or JSON)
 
         Config: ~/.config/reso_cli/mls.yml (override with RESO_CLI_CONFIG)
 
@@ -478,6 +569,7 @@ module ResoCli
           reso_cli get Property 12345
           reso_cli get Property 12345 --select ListingKey,City,ListPrice
           reso_cli count Property --eq City=Austin
+          reso_cli search Property --eq City=Austin --eq StandardStatus=Active --all --output austin.csv
       HELP
     end
 
@@ -552,6 +644,17 @@ module ResoCli
         when "--skip"
           abort "Missing value for --skip" unless val
           options[:skip] = val.to_i
+          i += 2
+        when "--output"
+          abort "Missing value for --output" unless val
+          options[:output] = val
+          i += 2
+        when "--all"
+          options[:all] = true
+          i += 1
+        when "--max"
+          abort "--max needs a positive number" unless val.to_s.match?(/\A[1-9]\d*\z/)
+          options[:max] = val.to_i
           i += 2
         else
           abort "Unknown option: #{arg}. Run 'reso_cli help' for usage."
