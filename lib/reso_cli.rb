@@ -13,6 +13,7 @@ require_relative "reso_cli/detail_page"
 require_relative "reso_cli/compare"
 require_relative "reso_cli/compare_page"
 require_relative "reso_cli/compare_report"
+require_relative "reso_cli/history"
 
 module ResoCli
   APP_ROOT           = File.expand_path("../..", __FILE__)
@@ -495,8 +496,34 @@ module ResoCli
     # Build a portal-style detail page (photos, key facts, map, every field) and open it
     def cmd_details(args)
       listing_page(args, command: "details") do |listing, photos|
-        DetailPage.html(listing, photos, mls_name: active_mls_name)
+        @history = listing_history(listing)
+        DetailPage.html(listing, photos, mls_name: active_mls_name, history: @history)
       end
+    end
+
+    # Price/status history: HistoryTransactional when the feed has it, else derived from the listing record
+    def listing_history(listing)
+      records = fetch_history(listing)
+      events = History.from_transactions(records)
+      if events.any?
+        # History records often omit the close price; the listing has it
+        close = History.number(listing["ClosePrice"])
+        events.each { |e| e.price ||= close if e.event == "Sold" }
+        return { events: events, source: :transactions }
+      end
+
+      { events: History.from_record(listing), source: :record }
+    end
+
+    def fetch_history(listing)
+      resource = client.resources["HistoryTransactional"]
+      key = listing["ListingKey"]
+      return [] unless resource && key && resource.property("ResourceRecordKey")
+
+      query = resource.query.eq(ResourceRecordKey: key).limit(200)
+      fetch_results(query, all: true, max: 2000)[:records]
+    rescue ResoTransport::RequestError
+      []
     end
 
     # Shared by photos and details: find the listing, build the page, save it, open it
@@ -529,7 +556,11 @@ module ResoCli
 
       opened = open_page && open_in_browser(path)
       result = { listing_id: listing["ListingId"], address: Slideshow.address(listing), photos: photos.size, saved: path, opened: opened }
-      result[:fields] = listing.count { |k, v| k != "Media" && !DetailPage.empty?(v) } if command == "details"
+      if command == "details"
+        result[:fields] = listing.count { |k, v| k != "Media" && !DetailPage.empty?(v) }
+        result[:history_events] = @history[:events].size
+        result[:history_source] = @history[:source] == :transactions ? "HistoryTransactional" : "listing record (feed has no change history)"
+      end
       result[:note] = "Photo links from this MLS may expire; run this command again if photos stop loading." if photos.any?
       result[:note] = "This listing has no photos." if photos.empty?
       puts JSON.pretty_generate(result)

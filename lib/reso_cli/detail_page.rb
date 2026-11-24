@@ -160,8 +160,10 @@ module ResoCli
               "#{l['LotSizeAcres'].round(2)} acre lot"
             end
       add.("Lot", lot)
-      if l["ListPrice"].is_a?(Numeric) && l["LivingArea"].is_a?(Numeric) && l["LivingArea"].positive?
-        add.("Price/sq ft", money((l["ListPrice"] / l["LivingArea"]).round))
+      # Sold homes use the close price; everything else the list price
+      price = l["StandardStatus"].to_s.match?(/closed/i) && l["ClosePrice"].is_a?(Numeric) ? l["ClosePrice"] : l["ListPrice"]
+      if price.is_a?(Numeric) && l["LivingArea"].is_a?(Numeric) && l["LivingArea"].positive?
+        add.("Price/sq ft", money((price / l["LivingArea"]).round))
       end
       if l["AssociationFee"].is_a?(Numeric) && l["AssociationFee"].positive?
         add.("HOA", [money(l["AssociationFee"]), l["AssociationFeeFrequency"]&.downcase].compact.join(" "))
@@ -221,7 +223,8 @@ module ResoCli
       end
     end
 
-    def html(listing, photos, mls_name: nil, retrieved_at: Time.now)
+    # history: { events: [History::Event], source: :transactions | :record } (optional)
+    def html(listing, photos, mls_name: nil, retrieved_at: Time.now, history: nil)
       l = listing
       h = ->(s) { CGI.escapeHTML(s.to_s) }
       hide_address = address_hidden?(l)
@@ -288,6 +291,7 @@ module ResoCli
               </div>
               #{facts_html.empty? ? '' : %(<div class="facts">#{facts_html}</div>)}
               #{empty?(l['PublicRemarks']) ? '' : %(<section class="about"><h2>About this home</h2><p id="remarks" class="clamp">#{h.(l['PublicRemarks'])}</p><button id="more" class="link-btn" hidden>Show more</button></section>)}
+              #{history_html(history, l, h)}
             </div>
             <aside class="side">
               <div class="card map-card">
@@ -332,6 +336,23 @@ module ResoCli
       HTML
     end
 
+    def history_html(history, listing, h)
+      return "" unless history && history[:events].any?
+
+      lease = listing["PropertyType"].to_s.match?(/lease/i)
+      rows = history[:events].map do |e|
+        price = e.price ? money(e.price) + (lease ? "/mo" : "") : ""
+        change = e.change ? %(<span class="#{e.change.start_with?('-') ? 'down' : 'up'}">#{h.(e.change)}</span>) : ""
+        %(<tr><td>#{h.(e.time.strftime('%b %-d, %Y'))}</td><td>#{h.(e.event)}</td><td>#{h.(price)}</td><td>#{change}</td></tr>)
+      end.join
+      note = if history[:source] == :record
+               "This feed has no change history (its HistoryTransactional resource is empty), so these events come from the listing record's own price, status and date fields and may be incomplete."
+             else
+               "From this feed's HistoryTransactional records."
+             end
+      %(<section class="history"><h2>Price &amp; status history</h2><table><thead><tr><th>Date</th><th>Event</th><th>Price</th><th>Change</th></tr></thead><tbody>#{rows}</tbody></table><p class="history-note">#{h.(note)}</p></section>)
+    end
+
     def gallery_html(photos, h)
       return %(<div class="gallery none-photos">No photos for this listing</div>) if photos.empty?
 
@@ -371,6 +392,12 @@ module ResoCli
       .fact-value { font-weight: 600; margin-top: 2px; }
       h2 { font-size: 22px; margin: 0 0 10px; }
       .about p { white-space: pre-line; margin: 0; }
+      .history { margin-top: 28px; }
+      .history table { width: 100%; border-collapse: collapse; font-size: 15px; }
+      .history th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); border-bottom: 1px solid var(--line); padding: 6px 8px 6px 0; }
+      .history td { padding: 9px 8px 9px 0; border-bottom: 1px solid var(--soft); }
+      .history .down { color: #17723a; font-weight: 600; } .history .up { color: #a12a2a; font-weight: 600; }
+      .history-note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
       .clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
       .link-btn { background: none; border: 0; color: var(--accent); font: 600 15px inherit; padding: 6px 0; cursor: pointer; }
       .card { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 16px; }
