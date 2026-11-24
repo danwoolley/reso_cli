@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
 
-Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Results can be saved to a spreadsheet (CSV) or JSON file. It has been tested with CRMLS (https://h.api.crmls.org/Reso/OData; the Skills include special notes for it), Bridge Interactive (ACTRIS) and CDL / Lone Wolf.
+Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Results can be saved to a spreadsheet (CSV) or JSON file.
 
 
 ## Prerequisites
