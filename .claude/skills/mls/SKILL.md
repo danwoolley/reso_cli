@@ -1,6 +1,6 @@
 ---
 name: mls
-description: Query the active MLS for real estate listings, comparable properties, recent sales and market data via the RESO Web API, show a listing's photos or a full portal-style details page (photos, facts, map, every field), and save results to CSV/JSON files. Use for questions about homes, listings, prices, sales, agents or offices. Not for adding, switching or removing MLS connections (see mls-setup and mls-use).
+description: Query the active MLS for real estate listings, comparable properties, recent sales and market data via the RESO Web API, show a listing's photos or a full portal-style details page (photos, facts, map, every field), compare listings between two MLS feeds, and save results to CSV/JSON files. Use for questions about homes, listings, prices, sales, agents or offices. Not for adding, switching or removing MLS connections (see mls-setup and mls-use).
 allowed-tools: Bash(./reso_cli *)
 ---
 
@@ -82,6 +82,25 @@ Prefer `details` when the user wants to learn about a listing. Use `photos` when
 - **In the Claude desktop app,** if you have a built-in browser or preview tool that can display a local file, you may add `--no-open` and show the page there instead, so it appears next to the conversation.
 - **Don't publish these pages** to a hosted or shareable page. MLS listings and photos are licensed content, and the pages should stay on the user's machine. Don't download or describe the photos yourself unless the user asks.
 - **Photo links on some MLSs expire** (CRMLS/Trestle links last about an hour). If the user says the photos stopped loading, run the command again.
+
+## Comparing two feeds
+
+Use these when the user wants to check one MLS connection against another, e.g. an aggregator such as CDL against the native MLS feed. Both MLSs must already be set up (see `./reso_cli mls`). The active MLS doesn't change.
+
+- **One listing** ("compare 85 Sedgewick between CDL and CRMLS", "how does this listing differ in the two feeds?"):
+  ```bash
+  ./reso_cli compare OC26210043 --mls CDL --mls CRMLS
+  ```
+  This opens a page in the browser. Summary cards show counts of **different**, **only in A**, **only in B**, **same value, different format**, **system fields** (keys, IDs and timestamps each system assigns, so expected to differ) and **same**. Then come both photo strips, and a table of every field that differs. For list fields, the table spells out exactly which values are missing on each side. Summarize the counts and the most notable differences for the user.
+- **Many listings** ("compare all active listings in Irvine between CDL and CRMLS", "write a comparison report"):
+  ```bash
+  ./reso_cli compare-report --mls CDL --mls CRMLS --eq City=Irvine --eq StandardStatus=Active \
+    --output ~/analysis/report.md --save-data ~/analysis/report_data
+  ```
+  Choose the listings with the usual search filters, or with `--ids ID1,ID2` or `--ids-file FILE`. It pulls the listings from both feeds and matches them on `ListingId`. Listings missing from one feed are looked up in the other by MLS number to explain why (e.g. a status change not yet received, with how long it's been; the listing being hidden from internet display; or not being in that feed at all). Then it writes a Markdown report covering the summary, missing listings, status mismatches, the fields that differ most often, list values present in only one feed, and fields filled in by only one feed.
+  - Save the report where the user keeps their analysis, if they've said where. Otherwise it goes in the current folder. `--save-data DIR` keeps the raw records from both feeds.
+  - `--max N` caps listings per feed (default 2,000). For a broad query, run `count` first and confirm with the user before a very large pull.
+  - Afterwards, read the report and summarize the key findings for the user, along with the report's path.
 
 ## Saving and exporting results
 
