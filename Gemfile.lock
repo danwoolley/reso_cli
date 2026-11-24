@@ -9,6 +9,7 @@ GIT
 GEM
   remote: https://rubygems.org/
   specs:
+    csv (3.3.7)
     faraday (2.14.1)
       faraday-net_http (>= 2.0, < 3.5)
       json
@@ -29,6 +30,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  csv
   minitest (~> 5.0)
   rake
   reso_transport!
