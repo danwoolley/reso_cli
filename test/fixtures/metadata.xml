@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:DataServices>
+    <Schema Namespace="Example.Models" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="Property">
+        <Key><PropertyRef Name="ListingKey"/></Key>
+        <Property Name="ListingKey" Type="Edm.String"/>
+        <Property Name="City" Type="Edm.String"/>
+        <Property Name="StandardStatus" Type="Edm.String"/>
+        <Property Name="ListPrice" Type="Edm.Decimal"/>
+        <Property Name="BedroomsTotal" Type="Edm.Int32"/>
+        <Property Name="NewConstructionYN" Type="Edm.Boolean"/>
+        <Property Name="ModificationTimestamp" Type="Edm.DateTimeOffset"/>
+      </EntityType>
+      <EntityContainer Name="Default">
+        <EntitySet Name="Property" EntityType="Example.Models.Property"/>
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

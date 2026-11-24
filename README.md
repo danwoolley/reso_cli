@@ -136,6 +136,21 @@ In folder .claude/skills:
     - SKILL.md -- switch the active MLS by name or by picking from a list
 
 
+## Running tests
+
+```bash
+bundle exec rake test
+```
+
+The tests run offline in a few seconds. They use a throwaway config file and fake fixtures in `test/fixtures`, so they never touch your MLS connections or contact a server. They cover:
+
+- managing MLS connections: add, use, remove and moving an old config
+- Postman import
+- how search flags become OData queries
+
+GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
+
+
 ## Claude Code usage
 
 Run Claude Code in the root project folder, then ask things like:

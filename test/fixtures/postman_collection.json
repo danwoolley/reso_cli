@@ -1,0 +1,70 @@
+{
+  "info": { "name": "Example MLS" },
+  "variable": [
+    { "key": "secret_var", "value": "resolved-secret-123" },
+    { "key": "empty_var", "value": "" }
+  ],
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      { "key": "accessTokenUrl", "value": "https://auth.example.com/oauth2/token" },
+      { "key": "clientId", "value": "public-client" },
+      { "key": "clientSecret", "value": "public-secret" },
+      { "key": "grant_type", "value": "client_credentials" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Public",
+      "auth": {
+        "type": "oauth2",
+        "oauth2": [
+          { "key": "accessTokenUrl", "value": "https://auth.example.com/oauth2/token" },
+          { "key": "clientId", "value": "public-client" },
+          { "key": "clientSecret", "value": "public-secret" },
+          { "key": "grant_type", "value": "client_credentials" }
+        ]
+      },
+      "item": [
+        { "name": "Property", "request": { "method": "GET", "url": { "raw": "https://api.example.com/v2/OData/Property?$top=10" } } },
+        { "name": "Member", "request": { "method": "GET", "url": { "raw": "https://api.example.com/v2/odata/Member?$top=10" } } },
+        { "name": "Office", "request": { "method": "GET", "url": { "raw": "https://api.example.com/v2/OData/Office" } } }
+      ]
+    },
+    {
+      "name": "Back Office",
+      "auth": {
+        "type": "oauth2",
+        "oauth2": [
+          { "key": "accessTokenUrl", "value": "https://auth.example.com/oauth2/token" },
+          { "key": "clientId", "value": "bo-client" },
+          { "key": "clientSecret", "value": "{{secret_var}}" },
+          { "key": "scope", "value": "api.read" },
+          { "key": "grant_type", "value": "client_credentials" }
+        ]
+      },
+      "item": [
+        { "name": "Property", "request": { "method": "GET", "url": "https://bo.example.com/odata/Property" } }
+      ]
+    },
+    {
+      "name": "Token",
+      "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "static-token-abc" } ] },
+      "item": [
+        { "name": "Property", "request": { "method": "GET", "url": "https://token.example.com/reso/odata/Property" } }
+      ]
+    },
+    {
+      "name": "Broken",
+      "auth": {
+        "type": "oauth2",
+        "oauth2": [
+          { "key": "accessTokenUrl", "value": "https://auth.example.com/oauth2/token" },
+          { "key": "clientId", "value": "broken-client" },
+          { "key": "clientSecret", "value": "{{empty_var}}" }
+        ]
+      },
+      "item": []
+    }
+  ]
+}
