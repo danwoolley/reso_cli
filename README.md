@@ -7,22 +7,25 @@ Connect to as many MLS RESO Web API servers as you like and switch between them.
 
 ## Prerequisites
 
-1. **Ruby 3.1+** (tested with 3.4.1)
-   - Check with: `ruby --version`
-   - Install: [ruby-lang.org/en/documentation/installation](https://www.ruby-lang.org/en/documentation/installation/)
-2. **Bundler** — `gem install bundler`
-3. **Claude Code** — [claude.com/claude-code](https://claude.com/claude-code) (optional; everything also works from the shell)
+- **macOS or Linux.** On Windows, use [WSL](https://learn.microsoft.com/windows/wsl/install) (Windows Subsystem for Linux) and follow the Linux steps inside it.
+- **Claude Code**: [claude.com/claude-code](https://claude.com/claude-code). This is optional; everything also works from the shell.
+- **Ruby 3.1 or newer.** You don't need to set this up in advance: `/mls-setup` checks for it and helps you install it. To do it yourself:
+  - **macOS:** the built-in Ruby is too old. Install [Homebrew](https://brew.sh), then run `brew install ruby`. You don't need to change your PATH; `./reso_cli` finds Homebrew's Ruby automatically.
+  - **Ubuntu/Debian:** `sudo apt install ruby-full`
+  - **Other systems:** [ruby-lang.org/en/documentation/installation](https://www.ruby-lang.org/en/documentation/installation/)
+  - Version managers (rbenv, rvm, asdf) work too, with any Ruby 3.1 or newer.
 
 
 ## Setup
 
+### 1. Get the code
+
 ```bash
 git clone https://github.com/danwoolley/reso_cli.git
 cd reso_cli
-bundle install
 ```
 
-### Add an MLS
+### 2. Add an MLS
 
 Start Claude Code in the `reso_cli` folder and type:
 
@@ -30,7 +33,7 @@ Start Claude Code in the `reso_cli` folder and type:
 /mls-setup
 ```
 
-Claude asks a few simple questions: what to call the MLS, its API address, and your credentials. You can:
+The first time, Claude checks that Ruby and reso_cli's gems are installed, and installs whatever's missing, asking you first. Then it asks a few simple questions: what to call the MLS, its API address, and your credentials. You can:
 
 - **Point it at a Postman collection** (a `.json` file) if your MLS or data vendor sent you one. Claude reads the settings straight from the file, so your secrets never appear in the chat. This is the easiest and safest option.
 - **Paste the connection details**, for example straight from the email your MLS sent. Claude picks out the API URL, then either a bearer token or a client ID and secret (OAuth2).
@@ -65,6 +68,8 @@ Older versions kept credentials in `config/mls.yml` inside the repo. The first t
 You can do everything from the shell:
 
 ```bash
+./reso_cli setup          # first time only: installs reso_cli's Ruby gems
+
 # Bearer token
 ./reso_cli add "My MLS" --endpoint https://api.my-mls.com/odata --token YOUR_TOKEN
 
@@ -114,6 +119,9 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli remove NAME` -- remove an MLS connection
   - `reso_cli test` -- make a live, authenticated request to the active MLS
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
+  - `reso_cli setup` -- install reso_cli's Ruby gems (first-time setup)
+
+File paths can be relative to the folder you run `reso_cli` from, e.g. `./reso_cli postman MyMLS.json`.
 
 
 ## Skills

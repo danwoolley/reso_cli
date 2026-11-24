@@ -1,7 +1,7 @@
 ---
 name: mls-setup
 description: Add a new MLS RESO Web API connection (name, endpoint, credentials) to reso_cli, from details the user pastes or from a Postman collection.
-allowed-tools: Bash(./reso_cli mls), Bash(./reso_cli add *), Bash(./reso_cli postman *), Bash(./reso_cli test), Bash(./reso_cli use *), Bash(./reso_cli remove *)
+allowed-tools: Bash(./reso_cli help), Bash(./reso_cli setup), Bash(./reso_cli mls), Bash(./reso_cli add *), Bash(./reso_cli postman *), Bash(./reso_cli test), Bash(./reso_cli use *), Bash(./reso_cli remove *)
 ---
 
 # MLS Setup Skill
@@ -15,6 +15,19 @@ The person may not be technical. Keep it friendly: ask one short question at a t
 - **Never read or edit the config file directly.** Use only the `./reso_cli` commands listed in this skill.
 - **Never repeat a secret, token or password back** in your replies, not even partly. Refer to them as "your client secret", "your token", and so on.
 - If a Postman collection is available, prefer it. `./reso_cli add --from-postman` copies the credentials straight from the file, so the secrets never appear in the conversation.
+
+## Step 0: Make sure reso_cli can run
+
+Run `./reso_cli help`. If it prints the help text, go to Step 1. Otherwise, the `./reso_cli` wrapper prints exactly what's missing. Fix it with the user, in plain words:
+
+- **"needs Ruby 3.1 or newer"**:
+  - **macOS**: run `brew --version` to check for Homebrew. If it's installed, ask the user whether you may run `brew install ruby`, and run it if they agree. They don't need to change their PATH, because `./reso_cli` finds Homebrew's Ruby automatically. If Homebrew isn't installed, ask the user to install it from https://brew.sh. Its installer asks for their Mac password, so they must run it themselves in Terminal. Then continue with `brew install ruby`.
+  - **Linux**: ask the user to run `sudo apt install ruby-full`, or their distribution's equivalent. It needs their password.
+  - **Windows**: reso_cli needs WSL (Windows Subsystem for Linux). Point the user to the README.
+- **"needs Bundler"**: ask whether you may run `gem install bundler`.
+- **"gems aren't installed yet"**: run `./reso_cli setup`. It installs the gems using the right Ruby.
+
+Then run `./reso_cli help` again to confirm it works before continuing.
 
 ## Step 1: See what's already set up
 

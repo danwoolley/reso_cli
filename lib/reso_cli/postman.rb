@@ -64,7 +64,7 @@ module ResoCli
     attr_reader :path
 
     def initialize(path)
-      @path = File.expand_path(path)
+      @path = ResoCli.user_path(path)
       abort "Postman collection not found: #{@path}" unless File.exist?(@path)
       @data = JSON.parse(File.read(@path))
       abort "Not a Postman collection: #{@path}" unless @data.is_a?(Hash) && @data["item"].is_a?(Array)

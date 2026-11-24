@@ -1,3 +1,49 @@
 #!/bin/bash
-# Wrapper to run the RESO CLI from any directory
-cd "$(dirname "$0")" && bundle exec bin/reso_cli "$@"
+# Wrapper to run the RESO CLI from any directory.
+
+# Remember where the user ran us from, so relative file paths still work after the cd below
+export RESO_CLI_PWD="$PWD"
+
+ruby_ok() {
+  command -v ruby >/dev/null 2>&1 && ruby -e 'exit(Gem::Version.new(RUBY_VERSION) >= Gem::Version.new("3.1") ? 0 : 1)' 2>/dev/null
+}
+
+# macOS ships an old Ruby. If Homebrew's Ruby is installed, use it without needing PATH changes.
+if ! ruby_ok; then
+  for dir in /opt/homebrew/opt/ruby/bin /usr/local/opt/ruby/bin; do
+    if [ -x "$dir/ruby" ]; then
+      export PATH="$dir:$PATH"
+      break
+    fi
+  done
+fi
+
+if ! ruby_ok; then
+  current="$(ruby -e 'print RUBY_VERSION' 2>/dev/null || echo "not installed")"
+  echo "reso_cli needs Ruby 3.1 or newer (found: $current)." >&2
+  echo "  macOS:         brew install ruby   (Homebrew: https://brew.sh)" >&2
+  echo "  Ubuntu/Debian: sudo apt install ruby-full" >&2
+  echo "  Other:         https://www.ruby-lang.org/en/documentation/installation/" >&2
+  exit 1
+fi
+
+cd "$(dirname "$0")" || exit 1
+
+if ! command -v bundle >/dev/null 2>&1; then
+  echo "reso_cli needs Bundler. Install it with: gem install bundler" >&2
+  exit 1
+fi
+
+# `./reso_cli setup` installs the gems using the Ruby found above (works even when
+# Homebrew's Ruby isn't on the user's PATH)
+if [ "$1" = "setup" ]; then
+  bundle install && echo "reso_cli is ready. Next: run /mls-setup in Claude Code (or ./reso_cli add) to add an MLS."
+  exit $?
+fi
+
+if ! bundle check >/dev/null 2>&1; then
+  echo "reso_cli's Ruby gems aren't installed yet. Run: ./reso_cli setup" >&2
+  exit 1
+fi
+
+exec bundle exec bin/reso_cli "$@"
