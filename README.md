@@ -83,6 +83,24 @@ You can do everything from the shell:
 ```
 
 
+## Metadata cache
+
+Every RESO server publishes a metadata document describing its resources (Property, Member, Office, …), fields and data types. `reso_cli` downloads it the first time you use an MLS and caches it, so later commands start quickly. Some servers' metadata is several megabytes, so that first command can take a few seconds.
+
+- **Location:** `~/.cache/mls/`, one file per endpoint, named `metadata-<id>.xml`. The `<id>` is the first 12 characters of a SHA-256 hash of the endpoint URL, so switching MLSs never reuses another server's metadata.
+- **No credentials:** the files hold only the server's schema description, so they're safe to delete at any time.
+- **Shared by identical endpoints:** two MLS entries with the exact same endpoint URL (for example, two sets of credentials for one server) share a cache file. The URL text must match exactly, so `.../odata` and `.../OData` get separate files.
+- **Never expires:** if an MLS adds or changes fields or resources, clear the cache and the next command downloads a fresh copy:
+
+  ```bash
+  rm ~/.cache/mls/metadata-*.xml
+  ```
+
+  That clears every MLS's cache. That's fine, since each one is downloaded again when you next use it.
+
+The cache never holds credentials, and `reso_cli resources` and `fields` can be answered from it without contacting the server. So to check that an MLS still accepts your credentials, use `reso_cli test`, which always makes a live, authenticated request.
+
+
 ## CLI commands
 
   - `reso_cli resources` -- discover what the MLS exposes
