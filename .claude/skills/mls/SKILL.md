@@ -1,6 +1,6 @@
 ---
 name: mls
-description: Query the active MLS for real estate listings, comparable properties, recent sales and market data via the RESO Web API, show a listing's photos in a slideshow, and save results to CSV/JSON files. Use for questions about homes, listings, prices, sales, agents or offices. Not for adding, switching or removing MLS connections (see mls-setup and mls-use).
+description: Query the active MLS for real estate listings, comparable properties, recent sales and market data via the RESO Web API, show a listing's photos or a full portal-style details page (photos, facts, map, every field), and save results to CSV/JSON files. Use for questions about homes, listings, prices, sales, agents or offices. Not for adding, switching or removing MLS connections (see mls-setup and mls-use).
 allowed-tools: Bash(./reso_cli *)
 ---
 
@@ -62,15 +62,25 @@ Note: Quote values containing spaces (e.g., `--eq "City=Newport Beach"`).
 ./reso_cli photos OC26210043          # MLS number (ListingId) or ListingKey
 ```
 
-## Showing listing photos
+### Show a listing's full details page
+```bash
+./reso_cli details OC26210043         # photos, key facts, description, map, and every field
+```
 
-When the user asks to see a listing's photos ("show me the photos of that listing", "pictures of 85 Sedgewick"):
+## Showing listing photos and details
+
+Two commands open a page about one listing in the user's browser. They share the rules below.
+
+- **Photos** ("show me the photos of that listing", "pictures of 85 Sedgewick"): `./reso_cli photos <ListingId>` opens a full-screen photo slideshow.
+- **Details** ("show me the details", "tell me everything about that listing", "open the listing page"): `./reso_cli details <ListingId>` opens a portal-style listing page. Above the fold it shows a photo collage (with a full-screen photo viewer), price, status, beds/baths/sq ft, a key-facts grid, the description, a map and listed-by attribution. Below the fold, "All listing details" lists every field in the record, grouped into sections, with search and toggles for empty fields and raw RESO field names. It respects `InternetAddressDisplayYN` (no street address or map when it's No) and flags listings not approved for internet display.
+
+Prefer `details` when the user wants to learn about a listing. Use `photos` when they only want the pictures. Shared rules:
 
 - **Find the listing's MLS number (`ListingId`).** Usually it's in a result you already showed. If the user means a listing from earlier in the conversation, use that one. If they only give an address, search for it first. If it's unclear which listing they mean, ask.
-- **Run `./reso_cli photos <ListingId>`.** It builds a slideshow page with every photo in order (header, arrows/arrow keys, thumbnails, captions) and opens it in the user's default browser. It prints the saved path and the photo count.
+- **Run the command.** It builds the page and opens it in the user's default browser, and prints the saved path and the photo count (`details` also prints the number of filled-in fields).
 - **If `opened` is false** (e.g. there's no desktop browser), give the user the page's path to open themselves.
 - **In the Claude desktop app,** if you have a built-in browser or preview tool that can display a local file, you may add `--no-open` and show the page there instead, so it appears next to the conversation.
-- **Don't publish the slideshow** to a hosted or shareable page. MLS photos are licensed content, and the page should stay on the user's machine. Don't download or describe the photos yourself unless the user asks.
+- **Don't publish these pages** to a hosted or shareable page. MLS listings and photos are licensed content, and the pages should stay on the user's machine. Don't download or describe the photos yourself unless the user asks.
 - **Photo links on some MLSs expire** (CRMLS/Trestle links last about an hour). If the user says the photos stopped loading, run the command again.
 
 ## Saving and exporting results

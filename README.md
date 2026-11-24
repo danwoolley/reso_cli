@@ -2,7 +2,7 @@
 
 https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
 
-Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. View a listing's photos in a slideshow, and save results to a spreadsheet (CSV) or JSON file.
+Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Open a listing's photos or a full portal-style details page, and save results to a spreadsheet (CSV) or JSON file.
 
 
 ## Prerequisites
@@ -126,6 +126,7 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli test [--all]` -- make a live, authenticated request to the active MLS (or every MLS, one result each)
   - `reso_cli refresh [--all]` -- re-download the active MLS's metadata (or clear every cached copy)
   - `reso_cli photos LISTING_ID` -- open a photo slideshow for a listing (`--output FILE.html`, `--no-open`)
+  - `reso_cli details LISTING_ID` -- open a full listing details page: photos, key facts, map and every field (`--output FILE.html`, `--no-open`)
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
   - `reso_cli setup` -- install reso_cli's Ruby gems (first-time setup)
 
@@ -158,6 +159,7 @@ The tests run offline in a few seconds. They use a throwaway config file and fak
 - saving results to JSON and CSV, and fetching every page with `--all`
 - health checks, token expiry, metadata refresh, and retrying throttled requests
 - photo slideshow pages: photo order, skipping videos and documents, and escaping listing text
+- listing details pages: field grouping, labels, value formatting, hidden addresses, and escaping
 
 GitHub Actions runs them on every push and pull request, with Ruby 3.1 and 3.4.
 
@@ -193,6 +195,31 @@ From the shell:
 ```bash
 ./reso_cli photos OC26210043                        # MLS number or ListingKey; opens your browser
 ./reso_cli photos OC26210043 --output ~/Desktop/85-sedgewick.html --no-open
+```
+
+### Viewing a listing's full details
+
+Ask Claude to show you everything about a listing:
+
+```text
+show me the details of that listing
+```
+```text
+open the listing page for 85 Sedgewick
+```
+
+Claude opens a listing page in your browser, laid out like the big real estate portals:
+
+- **At the top:** a photo collage (click any photo, or "Show all photos", for a full-screen viewer), the price and status, beds/baths/sq ft and the address. Below those: key facts (type, year built, lot, price per sq ft, HOA, parking, cooling, days on market…), the description, a map and who the listing is with.
+- **Below that, "All listing details":** every field in the MLS record, grouped into sections such as Interior, Exterior & lot, Community & HOA, Location, Schools, Financial & tax, Price & listing history and Agents & offices, with readable labels and formatted values. A search box filters the fields. You can also show the empty fields, or the original RESO field names (handy when comparing feeds or checking data quality).
+
+If the seller asked that the address not be shown online, the street address and map are left out. Listings not approved for internet display are flagged at the top. The map uses OpenStreetMap and needs an internet connection. Like the photo slideshow, the page is saved on your computer (under `~/.cache/mls/details/`) and isn't published anywhere.
+
+From the shell:
+
+```bash
+./reso_cli details OC26210043                       # MLS number or ListingKey; opens your browser
+./reso_cli details OC26210043 --output ~/Desktop/85-sedgewick.html --no-open
 ```
 
 ### Saving results to a file
