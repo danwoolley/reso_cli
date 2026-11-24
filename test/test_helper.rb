@@ -8,8 +8,9 @@ require "rbconfig"
 APP_ROOT = File.expand_path("..", __dir__)
 FIXTURES = File.join(__dir__, "fixtures")
 
-# Never touch the user's real config or a real in-repo config/mls.yml
+# Never touch the user's real config, metadata cache, or a real in-repo config/mls.yml
 ENV["RESO_CLI_LEGACY_CONFIG"] = File.join(Dir.tmpdir, "reso_cli-test-no-legacy-#{Process.pid}.yml")
+ENV["RESO_CLI_CACHE_DIR"] = File.join(Dir.tmpdir, "reso_cli-test-cache-#{Process.pid}")
 
 require "reso_cli"
 
@@ -35,13 +36,20 @@ module CliHelper
     env = {
       "RESO_CLI_CONFIG" => @config_path,
       "RESO_CLI_LEGACY_CONFIG" => File.join(@tmpdir, "legacy-mls.yml"),
-      "RESO_CLI_PWD" => @tmpdir
+      "RESO_CLI_PWD" => @tmpdir,
+      "RESO_CLI_CACHE_DIR" => File.join(@tmpdir, "cache")
     }.merge(env)
     out, err, status = Open3.capture3(env, RbConfig.ruby, File.join(APP_ROOT, "bin", "reso_cli"), *args.map(&:to_s))
     Result.new(out, err, status)
   end
 
   def config_data = YAML.load_file(@config_path)
+
+  # A JWT-shaped bearer token whose payload has the given expiry (signature is fake)
+  def jwt_expiring_at(time)
+    encode = ->(h) { [h.to_json].pack("m0").tr("+/", "-_").delete("=") }
+    [encode.({ alg: "none" }), encode.({ exp: time.to_i }), "sig"].join(".")
+  end
 
   def add_bearer(name, endpoint: "https://api.example.com/odata", token: "secret-token-xyz")
     result = cli("add", name, "--endpoint", endpoint, "--token", token)
