@@ -17,6 +17,12 @@ module ResoCli
     # Managed by `reso_cli add / use / remove` (or /mls-setup and /mls-use in Claude Code).
   YAML
 
+  # Resolve a path the user typed relative to the folder they ran reso_cli from
+  # (the ./reso_cli wrapper changes into the repo folder before running).
+  def self.user_path(path)
+    File.expand_path(path, ENV["RESO_CLI_PWD"].to_s.empty? ? Dir.pwd : ENV["RESO_CLI_PWD"])
+  end
+
   class << self
     def run(args)
       command = args.shift
@@ -59,7 +65,7 @@ module ResoCli
     def config_path
       @config_path ||= begin
         base = ENV["XDG_CONFIG_HOME"].to_s.empty? ? "~/.config" : ENV["XDG_CONFIG_HOME"]
-        File.expand_path(ENV["RESO_CLI_CONFIG"].to_s.empty? ? File.join(base, "reso_cli", "mls.yml") : ENV["RESO_CLI_CONFIG"])
+        ENV["RESO_CLI_CONFIG"].to_s.empty? ? File.expand_path(File.join(base, "reso_cli", "mls.yml")) : ResoCli.user_path(ENV["RESO_CLI_CONFIG"])
       end
     end
 
@@ -436,6 +442,7 @@ module ResoCli
           remove NAME                   Remove an MLS connection
           test                          Check that the active MLS accepts your credentials
           postman FILE                  Show the MLS auth settings in a Postman collection
+          setup                         Install reso_cli's Ruby gems (first-time setup)
           help                          Show this help
 
         Search/Count Options:
