@@ -118,6 +118,7 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli fields RESOURCE [--match PATTERN]` -- list/search field names
   - `reso_cli search RESOURCE [filters]` -- query with structured or raw OData filters; add `--output FILE` to save results (`.csv` or JSON), `--all` for every page, `--max N` to cap `--all` (default 10,000)
   - `reso_cli get RESOURCE KEY` -- fetch a single record (`--output FILE` to save it)
+  - `search` and `get` leave remarks, photo links and virtual tours out of printed results; add `--include-protected` to print them
   - `reso_cli count RESOURCE [filters]` -- count matching records
   - `reso_cli mls` -- list configured MLSs (credentials are never printed)
   - `reso_cli use NAME` -- switch the active MLS
@@ -315,6 +316,17 @@ From the shell, add `--output FILE` to `search` or `get` (and `--all` for every 
 ./reso_cli search Property --eq City=Irvine --top 100 --output irvine.json
 ./reso_cli get Property 412212140 --output listing.json
 ```
+
+### Keeping listing content out of the AI conversation
+
+Agents' written remarks, listing photos and virtual tours are creative work owned by agents, brokers or photographers, and MLS data licenses limit where they may go. reso_cli keeps them out of what Claude reads:
+
+- **Printed results leave them out.** `search` and `get` drop fields such as `PublicRemarks`, `PrivateRemarks`, `Media`, `MediaURL` and `VirtualTourURL*` from what they print, and name what they dropped under `protected_fields_omitted`. Prices, dates, sizes and other facts are unaffected. Add `--include-protected` to print them anyway.
+- **Saved files keep every field.** Files written with `--output` are for you, so they have everything the MLS returned.
+- **The mls skill tells Claude not to read that content** from saved files or from the photo, details, comps and compare pages, and to show remarks only when you ask.
+- **Claude can't open the cached pages.** `.claude/settings.json` denies reading `~/.cache/mls/details`, `photos`, `comps` and `compare`.
+
+These measures cover how Claude uses reso_cli. Whether your MLS license permits AI tools at all, and how your AI account handles data retention and training, are separate questions to check.
 
 
 

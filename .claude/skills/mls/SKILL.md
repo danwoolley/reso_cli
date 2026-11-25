@@ -79,9 +79,20 @@ Prefer `details` when the user wants to learn about a listing. Use `photos` when
 - **Find the listing's MLS number (`ListingId`).** Usually it's in a result you already showed. If the user means a listing from earlier in the conversation, use that one. If they only give an address, search for it first. If it's unclear which listing they mean, ask.
 - **Run the command.** It builds the page and opens it in the user's default browser, and prints the saved path and the photo count (`details` also prints the number of filled-in fields).
 - **If `opened` is false** (e.g. there's no desktop browser), give the user the page's path to open themselves.
-- **In the Claude desktop app,** if you have a built-in browser or preview tool that can display a local file, you may add `--no-open` and show the page there instead, so it appears next to the conversation.
+- **Always let the command open the page in the user's default browser.** Don't add `--no-open` to show it in a built-in browser, preview pane or other tool you control, because you could then read or screenshot the page's remarks and photos (see **Protected listing content**). Use `--no-open` only when the user asks for it.
 - **Don't publish these pages** to a hosted or shareable page. MLS listings and photos are licensed content, and the pages should stay on the user's machine. Don't download or describe the photos yourself unless the user asks.
 - **Photo links on some MLSs expire** (CRMLS/Trestle links last about an hour). If the user says the photos stopped loading, run the command again.
+
+## Protected listing content
+
+Agents' written remarks, listing photos and virtual tours are creative work owned by agents, brokers or photographers, and MLS data licenses limit where that content may go. Keep it out of the conversation, so it isn't sent to the AI provider:
+
+- **`search` and `get` leave it out of printed results.** Fields such as `PublicRemarks`, `PrivateRemarks`, `Media`, `MediaURL` and `VirtualTourURL*` are dropped, and the output names them under `protected_fields_omitted`. Facts such as price, dates, beds and size are unaffected.
+- **Pass `--include-protected` only when the user asks** in this conversation to see that content here, e.g. "what does the description say?". Otherwise, offer `details` so they can read it in their browser.
+- **Don't read protected fields from saved files.** Files saved with `--output` keep every field. Use `--select` so they contain only what's needed. When a script analyzes a saved file, print only facts (prices, dates, counts), never remarks or media or tour links.
+- **Don't open the pages that `photos`, `details`, `comps` and `compare` build** (under `~/.cache/mls/`) with Read, Grep or shell commands. They're for the user's browser. Report the path and counts the command printed. The project settings deny reading those folders.
+- **Don't look at, download or describe photos** unless the user asks.
+- **For comparison reports,** summarize differences by field name and count. Don't quote remarks from them.
 
 ## Comparing two feeds
 

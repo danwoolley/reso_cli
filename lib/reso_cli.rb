@@ -30,6 +30,28 @@ module ResoCli
   MAX_RETRY_WAIT     = 60
   # Safety limit for `search --all`, so a broad query can't pull millions of records by accident
   DEFAULT_MAX_RECORDS = 10_000
+  # Listing content that is creative work owned by agents, brokers or photographers: written
+  # remarks, photos and virtual tours. `search` and `get` leave these out of what they print
+  # unless --include-protected is given, so an AI agent reading the output doesn't see them.
+  # Files saved with --output keep every field.
+  PROTECTED_FIELD = /\A(?:\w*Remarks|Media|MediaURL|OriginalMediaUrl|MediaHTML|X_MediaStream|VirtualTourURL\w*)\z/
+
+  def self.protected_field?(name)
+    PROTECTED_FIELD.match?(name.to_s)
+  end
+
+  # Drop protected fields from records; returns [records, sorted names of the fields dropped]
+  def self.without_protected(records)
+    omitted = []
+    cleaned = records.map do |record|
+      record.reject do |key, _|
+        next false unless protected_field?(key)
+        omitted << key.to_s
+        true
+      end
+    end
+    [cleaned, omitted.uniq.sort]
+  end
   CONFIG_HEADER      = <<~YAML
     # reso_cli MLS connections. Contains credentials: don't commit or share this file.
     # Managed by `reso_cli add / use / remove` (or /mls-setup and /mls-use in Claude Code).
@@ -908,9 +930,11 @@ module ResoCli
       if options[:output]
         puts JSON.pretty_generate(save_summary(options[:output], fetched))
       else
-        output = { count: fetched[:records].length, results: fetched[:records] }
+        records, omitted = options[:include_protected] ? [fetched[:records], []] : ResoCli.without_protected(fetched[:records])
+        output = { count: records.length, results: records }
         output[:next_link] = fetched[:next_link] if fetched[:next_link]
         output[:note] = "Stopped at the --max limit of #{fetched[:max]} records" if fetched[:hit_max]
+        output[:protected_fields_omitted] = omitted if omitted.any?
         puts JSON.pretty_generate(output)
       end
     end
@@ -984,11 +1008,17 @@ module ResoCli
     def cmd_get(args)
       resource_name = args.shift
       key = args.shift
-      abort "Usage: reso_cli get RESOURCE KEY [--select FIELD1,FIELD2] [--output FILE]" unless resource_name && key
+      abort "Usage: reso_cli get RESOURCE KEY [--select FIELD1,FIELD2] [--output FILE] [--include-protected]" unless resource_name && key
 
       select_fields = nil
       output_file = nil
+      include_protected = false
       until args.empty?
+        if args.first == "--include-protected"
+          args.shift
+          include_protected = true
+          next
+        end
         flag, val = args.shift(2)
         abort "Missing value for #{flag}" unless val
         case flag
@@ -1018,8 +1048,12 @@ module ResoCli
 
       if output_file
         puts JSON.pretty_generate(save_summary(output_file, { records: [parsed], next_link: nil, hit_max: false }))
-      else
+      elsif include_protected
         puts JSON.pretty_generate(parsed)
+      else
+        (record,), omitted = ResoCli.without_protected([parsed])
+        record["protected_fields_omitted"] = omitted if omitted.any?
+        puts JSON.pretty_generate(record)
       end
     end
 
@@ -1086,6 +1120,12 @@ module ResoCli
           --output FILE                 Save results to FILE: .csv for a spreadsheet, otherwise JSON
           --all                         Fetch every page of matches, not just the first (search only)
           --max N                       With --all, stop after N records (default: 10,000)
+
+        Protected listing content (search and get):
+          Remarks, photo/media links and virtual tours are creative work owned by agents,
+          brokers or photographers. They are left out of printed results and listed under
+          protected_fields_omitted. Files saved with --output keep them.
+          --include-protected           Print them too
 
         Fields Options:
           --match PATTERN               Regex to filter field names
@@ -1188,6 +1228,9 @@ module ResoCli
           i += 2
         when "--all"
           options[:all] = true
+          i += 1
+        when "--include-protected"
+          options[:include_protected] = true
           i += 1
         when "--max"
           abort "--max needs a positive number" unless val.to_s.match?(/\A[1-9]\d*\z/)
