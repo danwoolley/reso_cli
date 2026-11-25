@@ -1,7 +1,5 @@
 # RESO Web API Client CLI + Claude Skills = Claude Code MLS Access! :lobster:
 
-https://github.com/user-attachments/assets/844c8724-7d7d-48fc-9e27-342d0adf474e
-
 Connect to as many MLS RESO Web API servers as you like, switch between them, and ask Claude about listings in plain English. Open a listing's photos or a full portal-style details page, see comparable sales, compare feeds, and save results to a spreadsheet (CSV) or JSON file.
 
 Everything runs on your own computer: listing data comes straight from your MLS to you, with no server in between. Your MLS credentials and the listings' copyrighted remarks, photos and virtual tours are never sent to Claude; it works only with the facts it needs, such as prices, dates and sizes, while full listing pages open in your own browser.
