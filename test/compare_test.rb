@@ -138,4 +138,15 @@ class CompareTest < Minitest::Test
     assert_match(/\| `RoomType` \| Kitchen \| CRMLS \| 1 \|/, md)
     assert_match(/\| `RoomType` \| PrimaryBedroom \| CRMLS \| 1 \|/, md)
   end
+
+  def test_missing_reason_with_several_values_for_a_filter
+    filters = { "StandardStatus" => %w[Active Pending] }
+    pending = listing("P1", "StandardStatus" => "Pending")
+    reason = ResoCli::CompareReport.missing_reason(listing("P1"), pending, "CRMLS", filters, nil)
+    refute_match(/StandardStatus is/, reason[:reason].to_s, "Pending is one of the values asked for")
+
+    closed = listing("P1", "StandardStatus" => "Closed")
+    reason = ResoCli::CompareReport.missing_reason(listing("P1"), closed, "CRMLS", filters, nil)
+    assert_includes reason[:reason], "StandardStatus is \"Closed\" in CRMLS"
+  end
 end

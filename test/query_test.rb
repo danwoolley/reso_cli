@@ -47,6 +47,28 @@ class QueryTest < Minitest::Test
     assert_equal "City eq 'Newport Beach'", params_for("--eq", "City=Newport Beach")["$filter"]
   end
 
+  def test_repeated_ne_keeps_every_value
+    params = params_for("--eq", "City=Costa Mesa", "--ne", "StandardStatus=Closed", "--ne", "StandardStatus=Expired",
+                        "--ne", "StandardStatus=Canceled")
+    assert_equal "City eq 'Costa Mesa' and StandardStatus ne 'Closed' and StandardStatus ne 'Expired' and " \
+                 "StandardStatus ne 'Canceled'", params["$filter"]
+  end
+
+  def test_repeated_eq_matches_any_value
+    params = params_for("--eq", "City=Costa Mesa", "--eq", "StandardStatus=Active", "--eq", "StandardStatus=Pending")
+    assert_equal "City eq 'Costa Mesa' and (StandardStatus eq 'Active' or StandardStatus eq 'Pending')", params["$filter"]
+  end
+
+  def test_repeated_ranges_all_apply
+    params = params_for("--ge", "ListPrice=500000", "--ge", "ListPrice=600000", "--le", "BedroomsTotal=4")
+    assert_equal "ListPrice ge 500000 and ListPrice ge 600000 and BedroomsTotal le 4", params["$filter"]
+  end
+
+  def test_repeated_values_are_collected
+    options = ResoCli.send(:parse_query_options, ["Property", "--eq", "City=Irvine", "--eq", "City=Tustin", "--eq", "City=Orange"])
+    assert_equal ["Irvine", "Tustin", "Orange"], options[:eq]["City"]
+  end
+
   def test_raw_filter_overrides_structured_flags
     params = params_for("--filter", "contains(City,'Irv')", "--eq", "City=Ignored")
     assert_equal "contains(City,'Irv')", params["$filter"]

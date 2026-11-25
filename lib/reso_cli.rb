@@ -724,13 +724,18 @@ module ResoCli
       selection = if ids
                     "#{ids.size} MLS numbers given with --ids/--ids-file"
                   else
-                    parts = %i[eq ne gt ge lt le].flat_map { |op| options[op].map { |f, v| "#{f} #{op} #{v}" } }
+                    parts = %i[eq ne gt ge lt le].flat_map do |op|
+                      options[op].map do |f, v|
+                        joiner = op == :eq ? " or " : " and "
+                        Array(v).map { |one| "#{f} #{op} #{one}" }.join(joiner)
+                      end
+                    end
                     parts << "filter: #{options[:filter]}" if options[:filter]
                     "every listing matching #{parts.join(', ')}"
                   end
       meta = {
         generated_at: Time.now, a_pulled_at: a_pulled, b_pulled_at: b_pulled, a_endpoint: a_endpoint, b_endpoint: b_endpoint,
-        selection: selection, filters: options[:eq].transform_values(&:to_s), max: max, capped: a_capped || b_capped,
+        selection: selection, filters: options[:eq].transform_values { |v| v.is_a?(Array) ? v.map(&:to_s) : v.to_s }, max: max, capped: a_capped || b_capped,
         requested_ids: ids
       }
       report = CompareReport.build(a_name: a_name, b_name: b_name, a_records: a_records, b_records: b_records,
@@ -1134,8 +1139,8 @@ module ResoCli
           help                          Show this help
 
         Search/Count Options:
-          --eq FIELD=VALUE              Equality filter (repeatable)
-          --ne FIELD=VALUE              Not-equal filter (repeatable)
+          --eq FIELD=VALUE              Equality filter (repeatable; one field given several values matches any of them)
+          --ne FIELD=VALUE              Not-equal filter (repeatable; every value is excluded)
           --gt FIELD=VALUE              Greater-than filter (repeatable)
           --ge FIELD=VALUE              Greater-or-equal filter (repeatable)
           --lt FIELD=VALUE              Less-than filter (repeatable)
@@ -1189,12 +1194,18 @@ module ResoCli
       if options[:filter]
         query = query.set_query_params("$filter" => options[:filter])
       else
-        options[:eq]&.each { |f, v| query = query.eq(f.to_sym => v) }
-        options[:ne]&.each { |f, v| query = query.ne(f.to_sym => v) }
-        options[:gt]&.each { |f, v| query = query.gt(f.to_sym => v) }
-        options[:ge]&.each { |f, v| query = query.ge(f.to_sym => v) }
-        options[:lt]&.each { |f, v| query = query.lt(f.to_sym => v) }
-        options[:le]&.each { |f, v| query = query.le(f.to_sym => v) }
+        # A field given several values for --eq matches any of them: (f eq a or f eq b).
+        # Repeats of the other operators all apply: f ne a and f ne b.
+        options[:eq]&.each do |f, v|
+          if v.is_a?(Array)
+            query = query.any { v.each { |one| eq(f.to_sym => one) } }
+          else
+            query = query.eq(f.to_sym => v)
+          end
+        end
+        %i[ne gt ge lt le].each do |op|
+          options[op]&.each { |f, v| Array(v).each { |one| query = query.public_send(op, f.to_sym => one) } }
+        end
       end
 
       query = query.limit(options[:top]) if options[:top]
@@ -1227,7 +1238,12 @@ module ResoCli
           field, fval = val.split("=", 2)
           abort "Invalid format for #{arg}: expected FIELD=VALUE, got '#{val}'" unless fval
           op = arg.delete_prefix("--").to_sym
-          options[op][field] = coerce_value(fval)
+          value = coerce_value(fval)
+          # Repeating a field keeps every value, as an Array (see build_query for how they combine)
+          options[op][field] = if !options[op].key?(field) then value
+                               elsif options[op][field].is_a?(Array) then options[op][field] + [value]
+                               else [options[op][field], value]
+                               end
           i += 2
         when "--filter"
           abort "Missing value for --filter" unless val

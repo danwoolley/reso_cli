@@ -40,6 +40,10 @@ You have access to the local MLS (Multiple Listing Service) via a CLI tool that 
 ```
 Note: Quote values containing spaces (e.g., `--eq "City=Newport Beach"`).
 
+Repeating a filter for the same field keeps every value:
+- `--eq` matches **any** of them: `--eq StandardStatus=Active --eq StandardStatus=Pending` finds listings that are either. Use this to cover every status that's still for sale, e.g. Active, ComingSoon, ActiveUnderContract and Pending, in one search.
+- `--ne` excludes **all** of them, and repeated `--gt`/`--ge`/`--lt`/`--le` all apply.
+
 ### Get a single listing by key
 ```bash
 ./reso_cli get Property 412212140
