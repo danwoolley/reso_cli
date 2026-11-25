@@ -123,7 +123,7 @@ When the user asks for comps ("show me comps for this listing", "what are simila
 ```
 
 - **The search:** closed sales of the same property type and subtype, within the radius, closed within the period, with living area within ±25% and bedrooms within ±1. Results are ranked by similarity (distance, size, bedrooms, how recent). If fewer than 3 turn up, the search automatically widens once, doubling both the radius and the period.
-- **The page:** opens in the browser with the subject listing, a **value range** (median and middle-half price per sq ft × the subject's sq ft), a map with the subject and numbered comps, and a table (photo, address, sold date, sold and list price, beds/baths, sq ft, $/sq ft, distance).
+- **The page:** opens in the browser with the subject listing, a **value range** (median and middle-half price per sq ft × the subject's sq ft), a map with the subject and numbered comps, and a table (photo, address, sold date, sold and list price, beds/baths, sq ft, $/sq ft, distance). The command also builds a details page for the subject and each comp, and the subject's heading and each comp's address and photo link to it, so the user can open any of them from the comps page. If the user asks for details of a comp, point them to those links instead of running `details`. `--no-details` skips building them.
 - **Afterwards,** summarize the range and the closest comps for the user. Always say it's a rough price-per-sq-ft estimate, **not an appraisal**. Point out when the comps are mostly larger or smaller than the subject, since price per sq ft falls as size rises, which skews the range.
 
 ## Saving and exporting results

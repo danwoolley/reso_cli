@@ -6,8 +6,17 @@ module ResoCli
   module CompsPage
     module_function
 
-    def html(subject, comps, estimate:, photo_for:, mls_name:, months:, radius:, widened: false, retrieved_at: Time.now)
+    # detail_for maps a ListingId to the href of that listing's details page, when one was built
+    def html(subject, comps, estimate:, photo_for:, mls_name:, months:, radius:, widened: false, retrieved_at: Time.now,
+             detail_for: {})
       h = ->(s) { CGI.escapeHTML(s.to_s) }
+      # Wrap inner HTML in a link to the listing's details page (opens in a new tab), if there is one
+      link = lambda do |id, inner, cls = nil|
+        href = detail_for[id.to_s]
+        next inner unless href
+
+        %(<a href="#{h.(href)}" target="_blank"#{cls ? %( class="#{cls}") : ''} title="Open the listing details">#{inner}</a>)
+      end
       money = ->(n) { n ? DetailPage.money(n) : "—" }
       lease = subject["PropertyType"].to_s.match?(/lease/i)
       per = lease ? "/mo" : ""
@@ -40,8 +49,8 @@ module ResoCli
         <<~ROW
           <tr>
             <td class="n">#{i + 1}</td>
-            <td class="thumb">#{img}</td>
-            <td><div class="addr">#{h.(Slideshow.address(r))}</div><div class="muted">MLS # #{h.(r['ListingId'])}#{r['PropertySubType'] ? " · #{h.(r['PropertySubType'])}" : ''}</div></td>
+            <td class="thumb">#{link.(r['ListingId'], img)}</td>
+            <td><div class="addr">#{link.(r['ListingId'], h.(Slideshow.address(r)), 'detail-link')}</div><div class="muted">MLS # #{h.(r['ListingId'])}#{r['PropertySubType'] ? " · #{h.(r['PropertySubType'])}" : ''}</div></td>
             <td>#{h.(closed ? closed.strftime('%b %-d, %Y') : '—')}<div class="muted">#{c.months_ago} mo ago</div></td>
             <td class="num"><b>#{h.(money.(r['ClosePrice']))}#{per}</b>#{r['ListPrice'].is_a?(Numeric) ? %(<div class="muted">list #{h.(money.(r['ListPrice']))}</div>) : ''}</td>
             <td class="num">#{h.(r['BedroomsTotal'] || '—')} / #{h.(r['BathroomsTotalInteger'] || '—')}</td>
@@ -84,7 +93,7 @@ module ResoCli
             <div class="subject">
               #{subject_photo ? %(<img src="#{h.(subject_photo)}" alt="">) : ''}
               <div>
-                <h1>#{h.(address)}</h1>
+                <h1>#{link.(subject['ListingId'], h.(address), 'detail-link')}</h1>
                 <div class="subject-price">#{h.(price)}#{price_note ? %( <span class="muted">#{h.(price_note)}</span>) : ''} <span class="pill">#{h.(subject['StandardStatus'])}</span></div>
                 <div class="muted">#{h.(facts)}</div>
                 <div class="muted">MLS # #{h.(subject['ListingId'])} · via #{h.(mls_name)}</div>
@@ -92,7 +101,7 @@ module ResoCli
             </div>
             #{estimate_html}
           </div>
-          <p class="criteria">#{comps.size} closed #{h.(kind)} sales within #{h.(radius)} mi, sold in the last #{h.(months)} months, with similar size (±25%) and bedrooms (±1), ranked by similarity (distance, size, bedrooms, how recent).#{widened ? ' <b>The search was widened</b> because the first pass found fewer than 3.' : ''}</p>
+          <p class="criteria">#{comps.size} closed #{h.(kind)} sales within #{h.(radius)} mi, sold in the last #{h.(months)} months, with similar size (±25%) and bedrooms (±1), ranked by similarity (distance, size, bedrooms, how recent).#{widened ? ' <b>The search was widened</b> because the first pass found fewer than 3.' : ''}#{detail_for.any? ? ' Click an address or photo to open that listing’s details.' : ''}</p>
           #{coords || pins.any? ? '<div id="map"></div>' : ''}
           <table>
             <thead><tr><th>#</th><th></th><th>Address</th><th>Sold</th><th class="num">Price</th><th class="num">Bd / Ba</th><th class="num">Sq ft</th><th class="num">$/sq ft</th><th class="num">Distance</th></tr></thead>
@@ -134,6 +143,8 @@ module ResoCli
       td.n { font-weight: 700; color: var(--accent); width: 28px; }
       .thumb img, .noimg { width: 96px; height: 64px; object-fit: cover; border-radius: 6px; display: block; background: var(--soft); }
       .addr { font-weight: 600; }
+      a.detail-link { color: inherit; text-decoration: none; }
+      a.detail-link:hover { color: #1a5fb4; text-decoration: underline; }
       footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
       .pin { background: var(--accent); color: #fff; border: 2px solid #fff; border-radius: 50%; width: 24px; height: 24px; line-height: 20px; text-align: center; font: 700 12px sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
       .pin.subject { background: #d4382c; width: 28px; height: 28px; line-height: 24px; font-size: 14px; }
@@ -146,8 +157,11 @@ module ResoCli
         if (!el) return;
         if (!window.L) { el.outerHTML = '<p class="muted">The map couldn\'t load (no internet connection?).</p>'; return; }
         const map = L.map(el, { scrollWheelZoom: false });
-        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // Esri's World Street Map tiles. The page is opened as a local file, so the browser sends no
+        // Referer, and OpenStreetMap's and CARTO's tile servers refuse such requests; Esri's don't.
+        L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+          maxZoom: 19,
+          attribution: 'Tiles &copy; <a href="https://www.esri.com">Esri</a> &mdash; Source: Esri, HERE, Garmin, USGS, NGA, EPA, USDA, NPS'
         }).addTo(map);
         const icon = (text, cls) => L.divIcon({ className: "", html: '<div class="pin ' + cls + '">' + text + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
         const points = [];

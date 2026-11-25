@@ -78,8 +78,24 @@ class CompsTest < Minitest::Test
     assert_includes html, "Value range from these comps"
     assert_includes html, "not an appraisal"
     assert_includes html, %(<img src="https://x/a.jpg")
-    assert_includes html, "tile.openstreetmap.org"
+    assert_includes html, "server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map"
+    refute_includes html, "tile.openstreetmap.org"
     assert_includes html, '"subject":{"lat":33.703256'
+    refute_includes html, %(class="detail-link"), "no links without detail pages"
+  end
+
+  def test_page_links_to_detail_pages
+    comps = C.rank(SUBJECT, [sale("A", price: 1_500_000.0, sqft: 1800.0), sale("B", price: 1_600_000.0, sqft: 1750.0),
+                             sale("C", price: 1_450_000.0, sqft: 1690.0)], radius: 1, months: 6, max: 10, today: TODAY)
+    detail_for = { SUBJECT["ListingId"].to_s => "../details/details-#{SUBJECT['ListingId']}.html",
+                   "A" => "../details/details-A.html", "B" => "../details/details-B.html" }
+    html = ResoCli::CompsPage.html(SUBJECT, comps, estimate: nil, photo_for: { "A" => "https://x/a.jpg" },
+                                   mls_name: "CRMLS", months: 6, radius: 1.0, detail_for: detail_for)
+    assert_includes html, %(<h1><a href="../details/details-#{SUBJECT['ListingId']}.html" target="_blank" class="detail-link")
+    assert_includes html, %(<a href="../details/details-A.html" target="_blank" title="Open the listing details"><img src="https://x/a.jpg")
+    assert_includes html, %(<a href="../details/details-B.html" target="_blank" class="detail-link")
+    refute_includes html, "details-C.html", "a comp without a page gets no link"
+    assert_includes html, "Click an address or photo to open that listing’s details."
   end
 
   def test_page_with_too_few_comps

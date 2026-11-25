@@ -2,6 +2,7 @@ require "reso_transport"
 require "json"
 require "yaml"
 require "fileutils"
+require "pathname"
 require "logger"
 require "digest"
 require "optparse"
@@ -785,10 +786,11 @@ module ResoCli
       output = take.("--output")
       open_page = ENV["RESO_CLI_NO_OPEN"].to_s.empty?
       open_page = false if args.delete("--no-open")
+      details = !args.delete("--no-details")
       abort "--months, --radius and --max must be positive" unless months.positive? && radius.positive? && max.positive?
       id = args.shift
       abort "Unexpected argument: #{args.first}" if args.any?
-      abort "Usage: reso_cli comps LISTING_ID [--months 6] [--radius 1] [--max 10] [--output FILE.html] [--no-open]" unless id
+      abort "Usage: reso_cli comps LISTING_ID [--months 6] [--radius 1] [--max 10] [--output FILE.html] [--no-open] [--no-details]" unless id
 
       subject = find_listing_with_media(id)
       abort "No listing found with MLS number or ListingKey '#{id}' on #{active_mls_name}." unless subject
@@ -808,15 +810,31 @@ module ResoCli
         widened = true
       end
 
+      with_media = listings_with_media(resource, comps.map { |c| c.record["ListingId"].to_s })
       photo_for = { subject["ListingId"].to_s => Slideshow.photos(subject["Media"]).first&.dig("url") }
-      photo_for.merge!(first_photos(resource, comps.map { |c| c.record["ListingId"].to_s }))
+      with_media.each { |lid, r| photo_for[lid] = Slideshow.photos(r["Media"]).first&.dig("url") }
       estimate = Comps.estimate(subject, comps)
 
       safe = ->(str) { str.to_s.gsub(/[^\w.-]/, "_") }
       path = ResoCli.user_path(output || File.join(CACHE_DIR, "comps", "comps-#{safe.(active_mls_name)}-#{safe.(subject['ListingId'] || id)}.html"))
       FileUtils.mkdir_p(File.dirname(path))
+
+      # A details page for the subject and each comp, linked from the comps page
+      detail_for = {}
+      if details
+        listings = [subject] + comps.map do |c|
+          listing = with_media[c.record["ListingId"].to_s] || c.record.dup
+          listing["Media"] ||= fetch_media(listing)
+          listing
+        end
+        listings.each do |listing|
+          page = write_detail_page(listing)
+          detail_for[listing["ListingId"].to_s] = Pathname.new(page).relative_path_from(File.dirname(path)).to_s
+        end
+      end
+
       File.write(path, CompsPage.html(subject, comps, estimate: estimate, photo_for: photo_for, mls_name: active_mls_name,
-                                                      months: months, radius: radius, widened: widened))
+                                                      months: months, radius: radius, widened: widened, detail_for: detail_for))
 
       result = {
         listing_id: subject["ListingId"], address: Slideshow.address(subject), comps: comps.size,
@@ -826,22 +844,34 @@ module ResoCli
         result[:median_price_per_sqft] = estimate[:median_ppsf].round
         result[:value_range] = [estimate[:low], estimate[:high]] if estimate[:low]
       end
+      result[:detail_pages] = detail_for.size if details
       result[:saved] = path
       result[:opened] = open_page && open_in_browser(path)
       puts JSON.pretty_generate(result)
     end
 
-    # First photo URL for each listing, fetched in batches with $expand=Media
-    def first_photos(resource, ids)
-      photos = {}
+    # Full records with Media expanded, keyed by ListingId, fetched in batches.
+    # Returns what it got so far if the server rejects the request (e.g. no $expand support).
+    def listings_with_media(resource, ids)
+      found = {}
       ids.each_slice(20) do |batch|
         filter = batch.map { |i| "ListingId eq '#{i.gsub("'", "''")}'" }.join(" or ")
         records = with_retries { resource.query.set_query_params("$filter" => filter).expand("Media").limit(50).results }
-        records.each { |r| photos[r["ListingId"].to_s] = Slideshow.photos(r["Media"]).first&.dig("url") }
+        records.each { |r| found[r["ListingId"].to_s] = r }
       end
-      photos
+      found
     rescue ResoTransport::RequestError
-      photos
+      found
+    end
+
+    # Write a listing's details page to the cache (where `details` saves it) and return its path
+    def write_detail_page(listing)
+      history = listing_history(listing)
+      name = "details-#{listing['ListingId'].to_s.gsub(/[^\w.-]/, '_')}.html"
+      path = File.join(CACHE_DIR, "details", name)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, DetailPage.html(listing, Slideshow.photos(listing["Media"]), mls_name: active_mls_name, history: history))
+      path
     end
 
     # Look a listing up by MLS number (ListingId), then by ListingKey, with its Media expanded
@@ -1093,8 +1123,9 @@ module ResoCli
                                         [--output FILE.html] [--no-open]
           compare LISTING_ID --mls A --mls B
                                         Compare one listing between two MLS connections, field by field
-          comps LISTING_ID              Comparable recent sales with a value range, map and table
-                                        [--months 6] [--radius 1] [--max 10] [--output FILE.html] [--no-open]
+          comps LISTING_ID              Comparable recent sales with a value range, map and table,
+                                        linked to a details page for each listing (--no-details: skip them)
+                                        [--months 6] [--radius 1] [--max 10] [--output FILE.html] [--no-open] [--no-details]
           compare-report --mls A --mls B (SEARCH FILTERS | --ids ID,... | --ids-file FILE)
                                         Compare many listings and write a Markdown report
                                         [--output FILE.md] [--max N] [--save-data DIR]
