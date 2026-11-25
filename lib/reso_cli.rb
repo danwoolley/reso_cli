@@ -1127,7 +1127,7 @@ module ResoCli
           details LISTING_ID            Open a full listing detail page: photos, key facts, map, every field
                                         [--output FILE.html] [--no-open]
           compare LISTING_ID --mls A --mls B
-                                        Compare one listing between two MLS connections, field by field
+                                        Compare one listing between two MLS connections as a red/green diff (A is the baseline)
           comps LISTING_ID              Comparable recent sales with a value range, map and table,
                                         linked to a details page for each listing (--no-details: skip them)
                                         [--months 6] [--radius 1] [--max 10] [--output FILE.html] [--no-open] [--no-details]

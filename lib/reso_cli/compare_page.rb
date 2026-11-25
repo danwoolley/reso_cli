@@ -9,6 +9,11 @@ module ResoCli
 
     module_function
 
+    # Above this many LCS cells (tokens in A × tokens in B), highlight the whole value instead
+    MAX_DIFF_CELLS = 250_000
+    # Strings this short or shorter are diffed character by character; longer ones word by word
+    CHAR_DIFF_MAX = 40
+
     # For list fields: which items are only on one side
     def list_diff(a, b)
       return nil unless a.is_a?(Array) && b.is_a?(Array)
@@ -16,6 +21,78 @@ module ResoCli
       la = a.map(&:to_s)
       lb = b.map(&:to_s)
       { only_a: la - lb, only_b: lb - la }
+    end
+
+    # Diff of two strings as [[:eq | :del | :add, text], ...], merging runs of the same kind.
+    # :del is text only in `a` (the baseline), :add text only in `b`.
+    def text_ops(a, b)
+      a = a.to_s
+      b = b.to_s
+      ta, tb = if a.length <= CHAR_DIFF_MAX && b.length <= CHAR_DIFF_MAX
+                 [a.chars, b.chars]
+               else
+                 [a.scan(/\s+|\S+/), b.scan(/\s+|\S+/)]
+               end
+      return [[:del, a], [:add, b]].reject { |_, t| t.empty? } if ta.size * tb.size > MAX_DIFF_CELLS
+
+      # Longest common subsequence, filled from the end so the walk below goes forward
+      n = ta.size
+      m = tb.size
+      lcs = Array.new(n + 1) { Array.new(m + 1, 0) }
+      (n - 1).downto(0) do |i|
+        (m - 1).downto(0) do |j|
+          lcs[i][j] = ta[i] == tb[j] ? lcs[i + 1][j + 1] + 1 : [lcs[i + 1][j], lcs[i][j + 1]].max
+        end
+      end
+
+      ops = []
+      i = j = 0
+      while i < n && j < m
+        if ta[i] == tb[j]
+          ops << [:eq, ta[i]]
+          i += 1
+          j += 1
+        elsif lcs[i + 1][j] >= lcs[i][j + 1]
+          ops << [:del, ta[i]]
+          i += 1
+        else
+          ops << [:add, tb[j]]
+          j += 1
+        end
+      end
+      ta[i..].each { |t| ops << [:del, t] }
+      tb[j..].each { |t| ops << [:add, t] }
+
+      ops.each_with_object([]) do |(kind, t), out|
+        if out.last && out.last[0] == kind
+          out.last[1] += t
+        else
+          out << [kind, t.dup]
+        end
+      end
+    end
+
+    # The baseline (a) and compared (b) cells of a "different" row, with changes marked.
+    # Lists: one chip per item, items missing from the other feed in red (−) or green (+).
+    # Other values: the changed characters or words wrapped in <del> / <ins>.
+    def diff_cells(field, a, b)
+      h = ->(s) { CGI.escapeHTML(s.to_s) }
+      if a.is_a?(Array) && b.is_a?(Array)
+        ka = a.map { |x| Compare.loose(x) }
+        kb = b.map { |x| Compare.loose(x) }
+        chip = lambda do |item, kind|
+          sign = { del: "−", add: "+" }[kind]
+          %(<span class="chip chip-#{kind}">#{sign ? %(<b>#{sign}</b>) : ''}#{h.(DetailPage.text(field, item))}</span>)
+        end
+        left = a.each_with_index.map { |x, i| chip.(x, kb.include?(ka[i]) ? :eq : :del) }.join
+        right = b.each_with_index.map { |x, i| chip.(x, ka.include?(kb[i]) ? :eq : :add) }.join
+        return [%(<div class="chips">#{left}</div>), %(<div class="chips">#{right}</div>)]
+      end
+
+      ops = text_ops(DetailPage.text(field, a), DetailPage.text(field, b))
+      left = ops.reject { |k, _| k == :add }.map { |k, t| k == :del ? "<del>#{h.(t)}</del>" : h.(t) }.join
+      right = ops.reject { |k, _| k == :del }.map { |k, t| k == :add ? "<ins>#{h.(t)}</ins>" : h.(t) }.join
+      [left, right]
     end
 
     def html(a_name, a, b_name, b, retrieved_at: Time.now)
@@ -36,21 +113,20 @@ module ResoCli
       body = sorted.map do |r|
         f = r[:field]
         cell = ->(v) { Compare.empty?(v) ? '<span class="none">—</span>' : DetailPage.html_value(f, v) }
-        diff = r[:status] == :different ? list_diff(r[:a], r[:b]) : nil
-        note = if diff && (diff[:only_a].any? || diff[:only_b].any?)
-                 parts = []
-                 parts << "only in #{h.(a_name)}: #{h.(diff[:only_a].join(', '))}" if diff[:only_a].any?
-                 parts << "only in #{h.(b_name)}: #{h.(diff[:only_b].join(', '))}" if diff[:only_b].any?
-                 %(<div class="diffnote">#{parts.join(' · ')}</div>)
-               else
-                 ""
-               end
+        # Tint and contents of each side: red where the baseline has something the other lacks, green the reverse
+        left, right, tint_a, tint_b = case r[:status]
+                                      when :different then [*diff_cells(f, r[:a], r[:b]), "t-del", "t-add"]
+                                      when :only_a then [cell.(r[:a]), cell.(r[:b]), "t-del", ""]
+                                      when :only_b then [cell.(r[:a]), cell.(r[:b]), "", "t-add"]
+                                      when :format then [cell.(r[:a]), cell.(r[:b]), "t-fmt", "t-fmt"]
+                                      else [cell.(r[:a]), cell.(r[:b]), "", ""]
+                                      end
         search = h.("#{DetailPage.label(f)} #{f} #{DetailPage.section_for(f)}".downcase)
         <<~ROW
           <tr data-status="#{r[:status]}" data-search="#{search}">
             <td><div class="label">#{h.(DetailPage.label(f))}</div><code>#{h.(f)}</code><div class="section">#{h.(DetailPage.section_for(f))}</div></td>
-            <td>#{cell.(r[:a])}</td>
-            <td>#{cell.(r[:b])}#{note}</td>
+            <td class="side side-a #{tint_a}" data-feed="#{h.(a_name)}">#{left}</td>
+            <td class="side side-b #{tint_b}" data-feed="#{h.(b_name)}">#{right}</td>
             <td><span class="badge #{BADGE[r[:status]]}">#{h.(Compare.status_label(r[:status], a_name, b_name))}</span></td>
           </tr>
         ROW
@@ -86,19 +162,29 @@ module ResoCli
             <div><h3>#{h.(b_name)} · #{photos_b.size} photos</h3><div class="strip">#{thumbs.(photos_b)}</div></div>
           </section>
 
+          <div class="legend">
+            <span><span class="sw t-del"></span><b>−</b> In #{h.(a_name)} (baseline), missing from #{h.(b_name)}</span>
+            <span><span class="sw t-add"></span><b>+</b> In #{h.(b_name)}, not in #{h.(a_name)}</span>
+            <span><span class="sw t-fmt"></span> Same value, different format</span>
+          </div>
+
           <div class="controls">
             <input id="filter" type="search" placeholder="Search fields…" aria-label="Search fields">
             <label><input type="checkbox" id="show-same"> Show matching fields (#{counts[:same]})</label>
             <button id="reset" class="link">Show all differences</button>
+            <span class="views" role="group" aria-label="Diff layout">
+              <button id="view-split" class="view on" aria-pressed="true">Split</button><button id="view-unified" class="view" aria-pressed="false">Unified</button>
+            </span>
           </div>
 
-          <table>
-            <thead><tr><th>Field</th><th>#{h.(a_name)}</th><th>#{h.(b_name)}</th><th>Result</th></tr></thead>
+          <table id="diff" class="split">
+            <thead><tr><th>Field</th><th>#{h.(a_name)} <span class="base">baseline</span></th><th>#{h.(b_name)}</th><th>Result</th></tr></thead>
             <tbody>#{body}</tbody>
           </table>
           <div id="no-match" class="none" hidden>No fields match.</div>
 
           <footer>
+            The first feed given with --mls (#{h.(a_name)}) is the baseline: red marks what it has and #{h.(b_name)} lacks, green what #{h.(b_name)} adds.
             "System fields" are keys, IDs and timestamps each system assigns for itself, so they're expected to differ.
             "Same value, different format" ignores case, spacing, punctuation, a URL's http(s)://, list order, and numbers sent as text.
             Generated by reso_cli.
@@ -134,7 +220,30 @@ module ResoCli
       td:first-child { width: 24%; } td:nth-child(2), td:nth-child(3) { width: 30%; } td:last-child { width: 16%; }
       .label { font-weight: 600; } code { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #8a96a1; }
       .section { font-size: 11px; color: var(--muted); }
-      .diffnote { margin-top: 6px; font-size: 12px; color: #8a4b00; background: #fff4e5; border-radius: 6px; padding: 4px 8px; }
+      .base { font-size: 10px; font-weight: 600; background: var(--soft); border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
+      /* GitHub-style diff colours: red = only in the baseline, green = only in the compared feed */
+      .t-del { background: #ffebe9; } .t-add { background: #e6ffec; } .t-fmt { background: #f1f5fb; }
+      del { background: #ffc1c0; color: #82071e; text-decoration: none; border-radius: 2px; }
+      ins { background: #abf2bc; color: #0b5a23; text-decoration: none; border-radius: 2px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+      .chip { display: inline-block; font-size: 12.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: #444; }
+      .chip b { margin-right: 3px; }
+      .chip-del { background: #ffc1c0; border-color: #f5a3a2; color: #82071e; }
+      .chip-add { background: #abf2bc; border-color: #8fdca3; color: #0b5a23; }
+      .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: var(--muted); margin: 4px 0 6px; }
+      .legend .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1px solid var(--line); }
+      .views { margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+      .view { font: inherit; font-size: 13px; border: 0; background: #fff; color: var(--muted); padding: 6px 12px; cursor: pointer; }
+      .view.on { background: var(--soft); color: var(--ink); font-weight: 600; }
+      /* Unified layout: both feeds' values stacked in one column, each labelled with its feed */
+      table.unified thead th:nth-child(3) { display: none; }
+      table.unified td.side { display: block; width: auto; border-bottom: 0; padding: 6px 8px; }
+      table.unified td.side-b { border-bottom: 1px solid var(--line); }
+      table.unified td.side::before { content: attr(data-feed); display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+      table.unified td.side-a.t-del::before { content: "− " attr(data-feed); color: #82071e; }
+      table.unified td.side-b.t-add::before { content: "+ " attr(data-feed); color: #0b5a23; }
+      table.unified tr { display: table-row; }
+      table.unified td:first-child, table.unified td:last-child { vertical-align: top; }
       .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
       .b-diff { background: #fde8e8; color: #a12a2a; } .b-only { background: #fff1db; color: #8a4b00; }
       .b-format { background: #e8eef7; color: #2d4b73; } .b-system { background: #f0f0f0; color: #555; } .b-same { background: #e3f5e8; color: #17723a; }
@@ -167,6 +276,22 @@ module ResoCli
         document.getElementById("reset").onclick = () => { only = null; showSame.checked = false; filter.value = ""; apply(); };
         filter.addEventListener("input", apply);
         showSame.onchange = apply;
+        // Split / unified layout, remembered per browser when storage is available
+        const table = document.getElementById("diff");
+        function layout(mode) {
+          table.className = mode;
+          ["split", "unified"].forEach(m => {
+            const b = document.getElementById("view-" + m);
+            b.classList.toggle("on", m === mode);
+            b.setAttribute("aria-pressed", m === mode);
+          });
+          try { localStorage.setItem("reso-compare-view", mode); } catch (e) {}
+        }
+        document.getElementById("view-split").onclick = () => layout("split");
+        document.getElementById("view-unified").onclick = () => layout("unified");
+        let saved = null;
+        try { saved = localStorage.getItem("reso-compare-view"); } catch (e) {}
+        if (saved === "unified") layout("unified");
         apply();
       })();
     JS

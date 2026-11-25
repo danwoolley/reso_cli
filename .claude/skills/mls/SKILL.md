@@ -104,9 +104,9 @@ Use these when the user wants to check one MLS connection against another, e.g. 
 
 - **One listing** ("compare 85 Sedgewick between CDL and CRMLS", "how does this listing differ in the two feeds?"):
   ```bash
-  ./reso_cli compare OC26210043 --mls CDL --mls CRMLS
+  ./reso_cli compare OC26210043 --mls CRMLS --mls CDL
   ```
-  This opens a page in the browser. Summary cards show counts of **different**, **only in A**, **only in B**, **same value, different format**, **system fields** (keys, IDs and timestamps each system assigns, so expected to differ) and **same**. Then come both photo strips, and a table of every field that differs. For list fields, the table spells out exactly which values are missing on each side. Summarize the counts and the most notable differences for the user.
+  The first `--mls` is the **baseline**, so put the reference feed first (usually the MLS's own feed, e.g. CRMLS). This opens a page in the browser. Summary cards show counts of **different**, **only in A**, **only in B**, **same value, different format**, **system fields** (keys, IDs and timestamps each system assigns, so expected to differ) and **same**. Then come both photo strips, and a GitHub-style diff of every field that differs: red (−) for what the baseline has and the other feed lacks, green (+) for what the other feed adds, one chip per value in list fields, and only the changed characters or words highlighted in text. It has a Split/Unified toggle. Summarize the counts and the most notable differences for the user.
 - **Many listings** ("compare all active listings in Irvine between CDL and CRMLS", "write a comparison report"):
   ```bash
   ./reso_cli compare-report --mls CDL --mls CRMLS --eq City=Irvine --eq StandardStatus=Active \
