@@ -60,12 +60,60 @@ class CompareTest < Minitest::Test
     assert_nil ResoCli::ComparePage.list_diff("a", ["a"])
   end
 
+  # -- diff highlighting --
+
+  P = ResoCli::ComparePage
+
+  def test_text_ops_marks_changed_characters
+    assert_equal [[:eq, "33.7032"], [:del, "4"], [:add, "5"], [:eq, "6"]], P.text_ops("33.703246", "33.703256")
+    assert_equal [[:eq, "abc"]], P.text_ops("abc", "abc")
+    assert_equal [[:add, "new"]], P.text_ops("", "new")
+  end
+
+  def test_text_ops_uses_words_for_long_text
+    a = "Lovely single story home with a large back yard and pool"
+    b = "Lovely two story home with a large back yard and pool"
+    assert_equal [[:eq, "Lovely "], [:del, "single"], [:add, "two"], [:eq, " story home with a large back yard and pool"]], P.text_ops(a, b)
+  end
+
+  def test_text_ops_falls_back_to_whole_values_when_too_large
+    a = (["a"] * 600).join(" ")
+    b = (["b"] * 600).join(" ")
+    assert_equal [[:del, a], [:add, b]], P.text_ops(a, b)
+  end
+
+  def test_diff_cells_for_lists_mark_each_item
+    left, right = P.diff_cells("RoomType", %w[Kitchen Bedroom PrimaryBedroom], %w[Kitchen Laundry])
+    assert_includes left, %(<span class="chip chip-eq">Kitchen</span>)
+    assert_includes left, %(<span class="chip chip-del"><b>−</b>PrimaryBedroom</span>)
+    assert_includes right, %(<span class="chip chip-add"><b>+</b>Laundry</span>)
+    refute_includes right, "Bedroom"
+  end
+
+  def test_diff_cells_ignore_format_only_differences_between_items
+    left, right = P.diff_cells("InteriorFeatures", ["Walk-In Closet(s)"], ["WalkInClosets"])
+    assert_includes left, "chip-eq"
+    assert_includes right, "chip-eq"
+  end
+
+  def test_diff_cells_escape_values
+    left, right = P.diff_cells("City", "<b>Irvine</b>", "<b>Tustin</b>")
+    refute_includes left + right, "<b>Irvine"
+    assert_includes left, "<del>"
+    assert_includes right, "<ins>"
+  end
+
   # -- comparison page --
 
   def test_compare_page
     html = ResoCli::ComparePage.html("CDL", A, "CRMLS", B)
     assert_includes html, "<h1>85 Sedgewick, Irvine, CA</h1>"
-    assert_includes html, "only in CRMLS: AllBedroomsUp"
+    assert_includes html, %(<span class="chip chip-add"><b>+</b>AllBedroomsUp</span>), "a list item only in CRMLS is green, shown exactly as the feed sends it"
+    assert_includes html, %(<td class="side side-a t-del" data-feed="CDL">), "the baseline side of a changed row is red"
+    assert_includes html, %(<td class="side side-b t-add" data-feed="CRMLS">)
+    assert_includes html, "33.7032<del>4</del>6", "only the changed digit is highlighted"
+    assert_includes html, "CDL <span class=\"base\">baseline</span>"
+    assert_includes html, %(id="view-unified")
     assert_includes html, "CDL · 1 photos"
     assert_includes html, "CRMLS · 2 photos"
     assert_includes html, %(data-status="format")

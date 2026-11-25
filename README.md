@@ -266,7 +266,13 @@ If you have two connections that should carry the same listings, for example a d
 compare listing OC26210043 between CDL and CRMLS
 ```
 
-This opens a page that lines the two records up field by field. It counts the fields that are **different**, **only in one feed**, the **same value in a different format** (e.g. `949-572-5372` vs `9495725372`), **system fields** (each system's own keys, IDs and timestamps, which are expected to differ) and the **same**. For list fields such as interior features, it shows exactly which values one feed is missing. Both feeds' photos are shown as well.
+This opens a page that lines the two records up field by field. It counts the fields that are **different**, **only in one feed**, the **same value in a different format** (e.g. `949-572-5372` vs `9495725372`), **system fields** (each system's own keys, IDs and timestamps, which are expected to differ) and the **same**. Both feeds' photos are shown as well.
+
+Differences are coloured like a GitHub diff. The first feed you name is the **baseline**, so name the reference feed first (e.g. the MLS's own feed):
+- **Red (−):** something the baseline has that the other feed lacks. **Green (+):** something the other feed adds.
+- **List fields** such as room types show one chip per value, so you can see exactly which values each feed is missing.
+- **Text and numbers** highlight only the characters or words that changed, e.g. `33.7032[4]6` vs `33.7032[5]6`.
+- **Split or Unified:** show the feeds side by side, or stacked in one column.
 
 **Many listings, as a report:**
 
@@ -284,7 +290,7 @@ reso_cli pulls the matching listings from both feeds, matches them by MLS number
 From the shell:
 
 ```bash
-./reso_cli compare OC26210043 --mls CDL --mls CRMLS
+./reso_cli compare OC26210043 --mls CRMLS --mls CDL
 ./reso_cli compare-report --mls CDL --mls CRMLS --eq City=Irvine --eq StandardStatus=Active \
   --output irvine-report.md --save-data irvine-data
 ./reso_cli compare-report --mls CDL --mls CRMLS --ids OC26210043,OC26219911    # or --ids-file ids.txt
