@@ -22,7 +22,8 @@ module ResoCli
 
     # Why a listing that's in `side` is missing from `other_name`.
     # `other` is that listing as found in the other feed by MLS number alone (nil if not there at all).
-    # `filters` are the query's --eq filters, e.g. { "City" => "Irvine" }.
+    # `filters` are the query's --eq filters, e.g. { "City" => "Irvine" }. A field given several
+    # values, e.g. { "StandardStatus" => ["Active", "Pending"] }, matches any of them.
     def missing_reason(present, other, other_name, filters, other_pulled_at)
       if other.nil? && present["InternetEntireListingDisplayYN"] == false
         return { reason: "Not approved for internet display (InternetEntireListingDisplayYN = No); #{other_name} doesn't include these" }
@@ -34,7 +35,7 @@ module ResoCli
       end
 
       mismatched = filters.filter_map do |field, value|
-        next if other[field].to_s.casecmp?(value.to_s)
+        next if Array(value).any? { |one| other[field].to_s.casecmp?(one.to_s) }
 
         "#{field} is #{other[field].inspect} in #{other_name}"
       end
