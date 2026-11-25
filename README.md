@@ -128,7 +128,7 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli refresh [--all]` -- re-download the active MLS's metadata (or clear every cached copy)
   - `reso_cli photos LISTING_ID` -- open a photo slideshow for a listing (`--output FILE.html`, `--no-open`)
   - `reso_cli details LISTING_ID` -- open a full listing details page: photos, key facts, map and every field (`--output FILE.html`, `--no-open`)
-  - `reso_cli comps LISTING_ID` -- comparable recent sales with a value range, map and table (`--months`, `--radius`, `--max`, `--output`, `--no-open`)
+  - `reso_cli comps LISTING_ID` -- comparable recent sales with a value range, map and table, linked to each listing's details page (`--months`, `--radius`, `--max`, `--output`, `--no-open`, `--no-details`)
   - `reso_cli compare LISTING_ID --mls A --mls B` -- compare one listing between two MLS connections, field by field
   - `reso_cli compare-report --mls A --mls B (filters | --ids … | --ids-file FILE)` -- compare many listings and write a Markdown report (`--output`, `--max`, `--save-data`)
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
@@ -245,6 +245,7 @@ Claude opens a page in your browser with:
 - **A value range** based on what comparable homes sold for per square foot. This is a rough guide, not an appraisal.
 - **A map** with the listing (★) and each comp numbered.
 - **A table of the comps:** photo, address, sold date, sold and list price, beds/baths, sq ft, $/sq ft and distance.
+- **Links to each listing's details page:** click a comp's address or photo, or the subject's heading, to open its full details page in a new tab. They're built along with the comps page; add `--no-details` to skip them.
 
 Comps are recent closed sales of the same type of home (e.g. single-family vs condo) nearby, with similar size and bedrooms. They're ranked by how similar they are. By default the search covers the last 6 months within 1 mile, and widens automatically if it finds fewer than 3.
 
