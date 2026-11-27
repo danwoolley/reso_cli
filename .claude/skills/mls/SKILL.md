@@ -94,7 +94,7 @@ Agents' written remarks, listing photos and virtual tours are creative work owne
 - **`search` and `get` leave it out of printed results.** Fields such as `PublicRemarks`, `PrivateRemarks`, `Media`, `MediaURL` and `VirtualTourURL*` are dropped, and the output names them under `protected_fields_omitted`. Facts such as price, dates, beds and size are unaffected.
 - **Pass `--include-protected` only when the user asks** in this conversation to see that content here, e.g. "what does the description say?". Otherwise, offer `details` so they can read it in their browser.
 - **Don't read protected fields from saved files.** Files saved with `--output` keep every field. Use `--select` so they contain only what's needed. When a script analyzes a saved file, print only facts (prices, dates, counts), never remarks or media or tour links.
-- **Don't open the pages that `photos`, `details`, `comps` and `compare` build** (under `~/.cache/mls/`) with Read, Grep or shell commands. They're for the user's browser. Report the path and counts the command printed. The project settings deny reading those folders.
+- **Don't open the pages that `photos`, `details`, `comps`, `compare` and `mls-report` build** (under `~/.cache/mls/`) with Read, Grep or shell commands. They're for the user's browser. Report the path and counts the command printed. The project settings deny reading those folders.
 - **Don't look at, download or describe photos** unless the user asks.
 - **For comparison reports,** summarize differences by field name and count. Don't quote remarks from them.
 
@@ -116,6 +116,19 @@ Use these when the user wants to check one MLS connection against another, e.g. 
   - Save the report where the user keeps their analysis, if they've said where. Otherwise it goes in the current folder. `--save-data DIR` keeps the raw records from both feeds.
   - `--max N` caps listings per feed (default 2,000). For a broad query, run `count` first and confirm with the user before a very large pull.
   - Afterwards, read the report and summarize the key findings for the user, along with the report's path.
+- **MLS comparison report** ("compare CRMLS and CDL-BO by finding five recently updated listings in Irvine and generating a report", "which MLS is faster for…"):
+  ```bash
+  ./reso_cli mls-report --mls CRMLS --mls CDL-BO --eq City=Irvine --top 5 \
+    --prompt "Compare CRMLS and CDL-BO by finding five recently updated listings in Irvine and generating a report"
+  ```
+  Runs the **same query** on both MLSs (search filters as usual; `--top` defaults to 5, at most 25; `--orderby` defaults to `ModificationTimestamp desc`, i.e. most recently updated) and times each round trip, after signing in so sign-in isn't counted. It writes an HTML report and opens it in the browser: the title, the **prompt** (pass the user's request word for word with `--prompt`), each MLS's name with its full query URL and round-trip time in ms, the time difference and which MLS was faster, then the red/green diff for each listing. Only listings **both** MLSs have are compared: the baseline's results come first, any the second MLS doesn't have are skipped (`skipped_not_in_b` in the output), and the baseline's next matches take their places. Mention skipped listings, and any `note` saying fewer were found than asked for. The command prints the report path, both URLs and times, and per-listing diff counts. Summarize those for the user; don't open the report. Put the reference feed first, as with `compare`.
+  - **PDF:** with Google Chrome installed, the report is also saved as a PDF (`pdf` in the output), one listing per page, with the photos captured. Google Drive displays PDFs but shows HTML as code, so the PDF is the version to share. `--no-pdf` skips it.
+- **Copying a report to Google Drive** ("copy this report to my Google Drive"):
+  ```bash
+  ./reso_cli copy-report                # the newest mls-report's PDF
+  ./reso_cli copy-report /path/to/report.html
+  ```
+  This copies the report's **PDF** into the user's Drive folder on this computer, and Google Drive for desktop syncs it. Only the PDF is copied, since Drive shows HTML files as code; add `--with-html` only if the user asks for the HTML too. Its contents are never printed. If the report has no PDF (Chrome missing), say so instead of copying the HTML. If no folder is set yet, ask the user which folder to use: it should be inside their Google Drive for desktop folder (usually `~/Library/CloudStorage/GoogleDrive-<account>/My Drive/...`). Then set it with `./reso_cli settings drive-folder "<PATH>"` and copy. **Never upload a report through a Google Drive connector or any other tool**: that would mean reading its remarks and photo links (see **Protected listing content**).
 
 ## Comparable sales (comps)
 

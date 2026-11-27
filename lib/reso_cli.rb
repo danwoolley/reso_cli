@@ -3,6 +3,8 @@ require "json"
 require "yaml"
 require "fileutils"
 require "pathname"
+require "cgi"
+require "tmpdir"
 require "logger"
 require "digest"
 require "optparse"
@@ -17,6 +19,7 @@ require_relative "reso_cli/compare_report"
 require_relative "reso_cli/history"
 require_relative "reso_cli/comps"
 require_relative "reso_cli/comps_page"
+require_relative "reso_cli/mls_report"
 
 module ResoCli
   APP_ROOT           = File.expand_path("../..", __FILE__)
@@ -64,6 +67,59 @@ module ResoCli
     File.expand_path(path, ENV["RESO_CLI_PWD"].to_s.empty? ? Dir.pwd : ENV["RESO_CLI_PWD"])
   end
 
+  # A Chrome-family browser that can print to PDF headlessly ($RESO_CLI_CHROME overrides)
+  def self.chrome_path
+    override = ENV["RESO_CLI_CHROME"].to_s
+    return(File.executable?(override) ? override : nil) unless override.empty?
+
+    mac = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+           "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+           "/Applications/Chromium.app/Contents/MacOS/Chromium"]
+    found = mac.find { |p| File.executable?(p) }
+    return found if found
+
+    %w[google-chrome google-chrome-stable chromium chromium-browser microsoft-edge].each do |cmd|
+      ENV["PATH"].to_s.split(File::PATH_SEPARATOR).each do |dir|
+        path = File.join(dir, cmd)
+        return path if File.executable?(path)
+      end
+    end
+    nil
+  end
+
+  # Print an HTML file to PDF with headless Chrome, waiting for photos to load (lazy-loaded
+  # images are made eager first). Returns the PDF path, or nil if there's no browser or it failed.
+  def self.print_pdf(html_path, pdf_path, timeout: 90)
+    chrome = chrome_path
+    return nil unless chrome
+
+    tmp = "#{html_path.sub(/\.html\z/, '')}.print.html"
+    File.write(tmp, File.read(html_path).gsub(' loading="lazy"', ""))
+    FileUtils.rm_f(pdf_path)
+    url = "file://" + tmp.split("/").map { |seg| CGI.escape(seg).gsub("+", "%20") }.join("/")
+    Dir.mktmpdir("reso_cli-chrome") do |profile|
+      pid = Process.spawn(chrome, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+                          "--user-data-dir=#{profile}", "--no-pdf-header-footer", "--virtual-time-budget=15000",
+                          "--print-to-pdf=#{pdf_path}", url, out: File::NULL, err: File::NULL)
+      deadline = Time.now + timeout
+      until Process.wait(pid, Process::WNOHANG)
+        if Time.now > deadline
+          begin
+            Process.kill("KILL", pid)
+            Process.wait(pid)
+          rescue SystemCallError
+            nil
+          end
+          break
+        end
+        sleep 0.2
+      end
+    end
+    File.size?(pdf_path) ? pdf_path : nil
+  ensure
+    FileUtils.rm_f(tmp) if tmp
+  end
+
   class << self
     def run(args)
       command = args.shift
@@ -86,6 +142,9 @@ module ResoCli
       when "compare"   then cmd_compare(args)
       when "compare-report" then cmd_compare_report(args)
       when "comps"     then cmd_comps(args)
+      when "mls-report" then cmd_mls_report(args)
+      when "copy-report" then cmd_copy_report(args)
+      when "settings"  then cmd_settings(args)
       when "help", nil, "-h", "--help" then cmd_help
       else
         abort "Unknown command: #{command}. Run 'reso_cli help' for usage."
@@ -659,6 +718,241 @@ module ResoCli
       puts JSON.pretty_generate(result)
     end
 
+    MLS_REPORT_MAX = 25
+
+    # Run the same listing query on two MLS connections, time each round trip, and write an
+    # HTML report: the prompt, each MLS's exact query URL and time, which was faster, and a
+    # red/green diff of every listing the baseline (first --mls) returned.
+    def cmd_mls_report(args)
+      a_query, b_query = two_mls(args)
+      take = lambda do |flag|
+        i = args.index(flag)
+        next nil unless i
+
+        _, value = args.slice!(i, 2)
+        abort "Missing value for #{flag}" unless value
+        value
+      end
+      prompt = take.("--prompt")
+      open_page = ENV["RESO_CLI_NO_OPEN"].to_s.empty?
+      open_page = false if args.delete("--no-open")
+      make_pdf = !args.delete("--no-pdf")
+      options = parse_query_options(["Property", *args])
+      options.delete(:resource)
+      output = options.delete(:output)
+      abort "mls-report compares a handful of listings: use --top N (1-#{MLS_REPORT_MAX}), not --all" if options[:all]
+      options[:top] ||= 5
+      abort "--top must be between 1 and #{MLS_REPORT_MAX}" unless (1..MLS_REPORT_MAX).cover?(options[:top])
+      options[:orderby] ||= "ModificationTimestamp desc"
+      options[:expand] = Array(options[:expand]) | ["Media"]
+      abort "Add search filters, e.g. --eq City=Irvine, so both MLSs are asked for the same listings" if options[:filter].nil? && %i[eq ne gt ge lt le].all? { |op| options[op].empty? }
+
+      runs = []
+      records = {}
+      [a_query, b_query].each do |q|
+        with_mls(q) do |name|
+          resource = resolve_resource("Property")   # loads metadata first, so it isn't timed
+          client.authentication.ensure_valid_access! # signs in first, so it isn't timed
+          query = build_query(resource, options)
+          url = client.connection.build_url(resource.url, query.send(:compile_params)).to_s
+          started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          found = query.results
+          ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
+          runs << { name: name, url: url, ms: ms, count: found.size }
+          records[name] = found
+        end
+      end
+
+      a_name, b_name = runs.map { |r| r[:name] }
+      want = options[:top]
+      b_by_id = records[b_name].to_h { |r| [r["ListingId"].to_s, r] }
+
+      # Only listings both MLSs have are diffed. The baseline's own results come first; any the other
+      # MLS doesn't have (looked up there by MLS number) are skipped, and the baseline's next
+      # matches fill their places. These extra lookups aren't timed.
+      pairs = []
+      skipped = []
+      seen = {}
+      take = lambda do |candidates|
+        fresh = candidates.reject { |r| seen[r["ListingId"].to_s] }
+        fresh.each { |r| seen[r["ListingId"].to_s] = true }
+        missing = fresh.map { |r| r["ListingId"].to_s }.reject { |id| b_by_id.key?(id) }
+        b_by_id.merge!(mls_report_lookup(b_query, missing)) if missing.any?
+        fresh.each do |rec|
+          break if pairs.size >= want
+
+          id = rec["ListingId"].to_s
+          if b_by_id[id]
+            pairs << { id: id, a: rec, b: b_by_id[id] }
+          else
+            skipped << id
+          end
+        end
+      end
+      take.(records[a_name])
+      if pairs.size < want && records[a_name].size >= want
+        more = options.merge(top: [want * 4, MLS_REPORT_MAX * 4].min)
+        candidates = with_mls(a_query) { fetch_results(build_query(resolve_resource("Property"), more))[:records] }
+        take.(candidates)
+      end
+      extra_b = records[b_name].map { |r| r["ListingId"].to_s } - records[a_name].map { |r| r["ListingId"].to_s }
+
+      prompt ||= "Compare #{a_name} and #{b_name}: the #{want} listings matching #{mls_report_filters(options)}, ordered by #{options[:orderby]}"
+      safe = ->(s) { s.to_s.gsub(/[^\w.-]/, "_") }
+      stamp = Time.now.strftime("%Y%m%d-%H%M%S")
+      path = ResoCli.user_path(output || File.join(CACHE_DIR, "mls-reports", "mls-report-#{safe.(a_name)}-vs-#{safe.(b_name)}-#{stamp}.html"))
+      path = "#{path}.html" unless path.end_with?(".html")
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, MlsReport.html(prompt: prompt, runs: runs, pairs: pairs, extra_b: extra_b, skipped: skipped, wanted: want))
+      pdf = make_pdf ? ResoCli.print_pdf(path, path.sub(/\.html\z/, ".pdf")) : nil
+
+      a_ms, b_ms = runs.map { |r| r[:ms] }
+      result = {
+        report: path,
+        queries: runs.map { |r| { mls: r[:name], url: r[:url], ms: r[:ms], listings: r[:count] } },
+        faster: a_ms == b_ms ? nil : (a_ms < b_ms ? a_name : b_name),
+        diff_ms: (a_ms - b_ms).abs,
+        listings: pairs.map do |p|
+          counts = Compare.summary(Compare.compare(p[:a], p[:b]))
+          { listing_id: p[:id], different: counts[:different], only_a: counts[:only_a], only_b: counts[:only_b], format: counts[:format] }
+        end
+      }
+      result[:skipped_not_in_b] = skipped if skipped.any?
+      result[:note] = "Only #{pairs.size} of the #{want} listings asked for are in both MLSs." if pairs.size < want
+      result[:only_in_b_results] = extra_b if extra_b.any?
+      if make_pdf
+        result[:pdf] = pdf
+        result[:pdf_note] = ResoCli.chrome_path ? "The PDF couldn't be made." : "No PDF: install Google Chrome (or set RESO_CLI_CHROME) to get one." unless pdf
+      end
+      result[:opened] = open_page && open_in_browser(path)
+      puts JSON.pretty_generate(result)
+    end
+
+    # Listings by MLS number from another MLS connection, with Media, keyed by ListingId (batches of 20)
+    def mls_report_lookup(mls_query, ids)
+      found = {}
+      with_mls(mls_query) do
+        resource = resolve_resource("Property")
+        ids.each_slice(20) do |batch|
+          query = build_query(resource, { eq: { "ListingId" => batch }, ne: {}, gt: {}, ge: {}, lt: {}, le: {},
+                                          top: batch.size, expand: ["Media"] })
+          with_retries { query.results }.each { |r| found[r["ListingId"].to_s] = r }
+        end
+      end
+      found
+    end
+
+    # The search filters as one line, e.g. "City eq Irvine, ListPrice ge 500000"
+    def mls_report_filters(options)
+      return options[:filter] if options[:filter]
+
+      %i[eq ne gt ge lt le].flat_map do |op|
+        options[op].map { |f, v| Array(v).map { |one| "#{f} #{op} #{one}" }.join(op == :eq ? " or " : " and ") }
+      end.join(", ")
+    end
+
+    # -- Settings (non-secret preferences, next to the MLS config) --
+
+    def settings_path
+      File.join(File.dirname(config_path), "settings.yml")
+    end
+
+    def settings
+      return {} unless File.exist?(settings_path)
+
+      YAML.safe_load_file(settings_path) || {}
+    end
+
+    def save_settings(data)
+      FileUtils.mkdir_p(File.dirname(settings_path))
+      File.write(settings_path, YAML.dump(data))
+    end
+
+    # reso_cli settings                       show settings
+    # reso_cli settings drive-folder PATH     set the folder reports are copied to
+    def cmd_settings(args)
+      key = args.shift
+      case key
+      when nil
+        puts JSON.pretty_generate(settings.merge("file" => settings_path))
+      when "drive-folder"
+        value = args.shift
+        abort "Usage: reso_cli settings drive-folder PATH  (a folder inside your Google Drive for desktop folder)" unless value
+        folder = ResoCli.user_path(value)
+        created = !Dir.exist?(folder)
+        if created
+          abort "The folder above it doesn't exist: #{File.dirname(folder)}" unless Dir.exist?(File.dirname(folder))
+          FileUtils.mkdir_p(folder)
+        end
+        data = settings.merge("drive_folder" => folder)
+        save_settings(data)
+        result = { drive_folder: folder, created: created }
+        result[:note] = "This folder isn't inside Google Drive for desktop (~/Library/CloudStorage/GoogleDrive-…), so copies won't sync to Drive." unless folder.include?("/CloudStorage/GoogleDrive-")
+        puts JSON.pretty_generate(result)
+      else
+        abort "Unknown setting: #{key}. Available: drive-folder"
+      end
+    end
+
+    # Copy a report's PDF (default: the newest MLS comparison report) into the Drive folder.
+    # Drive displays PDFs but shows HTML as code, so the PDF is what's shared.
+    # Only the files are copied; their contents are never printed.
+    #   --with-html   also copy the HTML      --html-only   copy just the HTML
+    def cmd_copy_report(args)
+      to = nil
+      if (i = args.index("--to"))
+        _, to = args.slice!(i, 2)
+        abort "Missing value for --to" unless to
+      end
+      with_html = !args.delete("--with-html").nil?
+      html_only = !args.delete("--html-only").nil?
+      args.delete("--pdf-only") # the default now; still accepted
+      abort "Use --with-html or --html-only, not both" if with_html && html_only
+      source = args.shift || "latest"
+      abort "Unexpected argument: #{args.first}" if args.any?
+
+      if source == "latest"
+        reports = Dir.glob(File.join(CACHE_DIR, "mls-reports", "*.html")).reject { |f| f.end_with?(".print.html") }
+        abort "No MLS comparison reports yet. Make one with 'reso_cli mls-report'." if reports.empty?
+        source = reports.max_by { |f| File.mtime(f) }
+      else
+        source = ResoCli.user_path(source)
+        abort "No such file: #{source}" unless File.file?(source)
+      end
+
+      folder = to ? ResoCli.user_path(to) : settings["drive_folder"]
+      abort "No Drive folder set. Set one with: reso_cli settings drive-folder PATH" unless folder
+      abort "The Drive folder doesn't exist: #{folder}" unless Dir.exist?(folder)
+
+      # The report and its PDF (same name, .pdf), in whichever combination was asked for
+      base = source.sub(/\.(html|pdf)\z/i, "")
+      html = File.file?("#{base}.html") ? "#{base}.html" : nil
+      pdf = File.file?("#{base}.pdf") ? "#{base}.pdf" : nil
+      html = source if html.nil? && !source.match?(/\.pdf\z/i)
+      files = if html_only then [html]
+              elsif with_html then [html, pdf]
+              else [pdf]
+              end.compact
+      if files.empty?
+        abort "This report has no PDF. Make it again with mls-report (it needs Google Chrome), or copy the HTML with --html-only." unless html_only
+        abort "Nothing to copy"
+      end
+
+      copied = files.map do |file|
+        dest = File.join(folder, File.basename(file))
+        n = 2
+        while File.exist?(dest)
+          dest = File.join(folder, "#{File.basename(file, '.*')}-#{n}#{File.extname(file)}")
+          n += 1
+        end
+        FileUtils.cp(file, dest)
+        { from: file, to: dest, bytes: File.size(dest) }
+      end
+      result = { folder: folder, copied: copied }
+      result[:note] = "No PDF for this report, so only the HTML was copied. Google Drive shows HTML as code, not as a page." if with_html && pdf.nil?
+      puts JSON.pretty_generate(result)
+    end
+
     # Compare many listings between two MLS connections and write a Markdown report
     def cmd_compare_report(args)
       a_query, b_query = two_mls(args)
@@ -1134,6 +1428,16 @@ module ResoCli
           compare-report --mls A --mls B (SEARCH FILTERS | --ids ID,... | --ids-file FILE)
                                         Compare many listings and write a Markdown report
                                         [--output FILE.md] [--max N] [--save-data DIR]
+          mls-report --mls A --mls B SEARCH FILTERS
+                                        Run the same query on both MLSs, time each round trip, and write an HTML
+                                        report (plus a PDF, via Google Chrome) with each query URL, which was
+                                        faster, and a diff per listing (only listings both MLSs have)
+                                        [--top 5] [--orderby "ModificationTimestamp desc"] [--prompt TEXT]
+                                        [--no-pdf]
+                                        [--output FILE.html] [--no-open]
+          copy-report [FILE | latest] [--to FOLDER] [--with-html | --html-only]
+                                        Copy a report's PDF (default: the newest mls-report) to your Drive folder
+          settings [drive-folder PATH]  Show settings, or set the Google Drive folder reports are copied to
           postman FILE                  Show the MLS auth settings in a Postman collection
           setup                         Install reso_cli's Ruby gems (first-time setup)
           help                          Show this help

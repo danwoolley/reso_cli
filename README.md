@@ -28,6 +28,8 @@ Once an MLS is connected, just ask Claude in plain English. Here are some things
 **Comparing two feeds** (e.g. a data aggregator vs. the MLS's own feed)
 - "Compare listing OC26210043 between MLS-A and MLS-B." Opens a GitHub-style red/green diff of every field.
 - "Compare all active listings in Irvine between MLS-A and MLS-B and write a report."
+- "Compare MLS-A and MLS-B by finding five recently updated listings in Irvine and generating a report." Times both queries and shows which MLS was faster, plus a diff of each listing.
+- "Copy this report to my Google Drive." Copies the report as a PDF, which Drive can display.
 - "Are there any listings with a status like Delete that should be removed?"
 
 **Managing connections**
@@ -162,6 +164,8 @@ The cache never holds credentials, and `reso_cli resources` and `fields` can be 
   - `reso_cli comps LISTING_ID` -- comparable recent sales with a value range, map and table, linked to each listing's details page (`--months`, `--radius`, `--max`, `--output`, `--no-open`, `--no-details`)
   - `reso_cli compare LISTING_ID --mls A --mls B` -- compare one listing between two MLS connections, field by field
   - `reso_cli compare-report --mls A --mls B (filters | --ids … | --ids-file FILE)` -- compare many listings and write a Markdown report (`--output`, `--max`, `--save-data`)
+  - `reso_cli mls-report --mls A --mls B (filters)` -- run the same query on both, time each round trip, and write an HTML report with the query URLs, which was faster, and a diff per listing (`--top`, `--orderby`, `--prompt`, `--output`, `--no-open`)
+  - `reso_cli copy-report [FILE | latest]` -- copy a report's PDF to your Drive folder (`--to FOLDER`, `--with-html`); `reso_cli settings drive-folder PATH` sets the folder
   - `reso_cli postman FILE` -- show the auth setups in a Postman collection (secrets are never printed)
   - `reso_cli setup` -- install reso_cli's Ruby gems (first-time setup)
 
@@ -327,6 +331,32 @@ From the shell:
 ./reso_cli compare-report --mls CDL --mls CRMLS --ids OC26210043,OC26219911    # or --ids-file ids.txt
 ```
 
+**Speed and listing quality, in one HTML report:**
+
+```text
+compare MLS-A and MLS-B by finding five recently updated listings in Irvine and generating a report
+```
+
+This runs the same query on both MLSs and opens an HTML report with:
+- **the title and your prompt**
+- **each MLS's full query URL** and its **round-trip time** in milliseconds, measured after signing in
+- **the time difference** and which MLS was faster
+- **a red/green diff of each listing**, the same view as the single-listing comparison
+
+The first MLS you name is the baseline. Only listings both MLSs have are compared: if one of the baseline's listings isn't in the second MLS, it's skipped and the next matching listing takes its place, and the report says which were skipped. The query takes the usual search filters; `--top` sets how many listings (default 5, up to 25), and `--orderby` defaults to the most recently updated.
+
+**A PDF for sharing:** if Google Chrome is installed, each report is also saved as a PDF, one listing per page. Unlike the HTML file, a PDF opens in Google Drive's viewer, and its photos are captured when it's made (MLS photo links in the HTML expire after about an hour). The PDF leaves out the interactive filters and the Split/Unified switch.
+
+**Copying a report to Google Drive:** install [Google Drive for desktop](https://www.google.com/drive/download/), then ask Claude to "copy this report to my Google Drive". The first time, Claude asks which folder to use, for example `~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/MLS Reports`. reso_cli copies the report's PDF there, and Drive syncs it, ready to share. The report never passes through Claude.
+
+From the shell:
+
+```bash
+./reso_cli mls-report --mls CRMLS --mls CDL --eq City=Irvine --top 5 --prompt "five recently updated Irvine listings"
+./reso_cli settings drive-folder "$HOME/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/MLS Reports"
+./reso_cli copy-report                 # the newest report's PDF; or give a file path (--with-html adds the HTML)
+```
+
 ### Saving results to a file
 
 Ask Claude to save any search to a file, in plain words:
@@ -361,8 +391,9 @@ Agents' written remarks, listing photos and virtual tours are creative work owne
 
 - **Printed results leave them out.** `search` and `get` drop fields such as `PublicRemarks`, `PrivateRemarks`, `Media`, `MediaURL` and `VirtualTourURL*` from what they print, and name what they dropped under `protected_fields_omitted`. Prices, dates, sizes and other facts are unaffected. Add `--include-protected` to print them anyway.
 - **Saved files keep every field.** Files written with `--output` are for you, so they have everything the MLS returned.
-- **The mls skill tells Claude not to read that content** from saved files or from the photo, details, comps and compare pages, and to show remarks only when you ask.
-- **Claude can't open the cached pages.** `.claude/settings.json` denies reading `~/.cache/mls/details`, `photos`, `comps` and `compare`.
+- **The mls skill tells Claude not to read that content** from saved files or from the photo, details, comps, compare and MLS comparison report pages, and to show remarks only when you ask.
+- **Claude can't open the cached pages.** `.claude/settings.json` denies reading `~/.cache/mls/details`, `photos`, `comps`, `compare` and `mls-reports`.
+- **Reports go to Google Drive without passing through Claude.** `copy-report` copies the PDF into your Drive for desktop folder on this computer, and Drive uploads it.
 
 These measures cover how Claude uses reso_cli. Whether your MLS license permits AI tools at all, and how your AI account handles data retention and training, are separate questions to check.
 
